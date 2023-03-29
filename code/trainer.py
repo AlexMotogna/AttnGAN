@@ -76,16 +76,16 @@ class condGANTrainer(object):
         netsD = []
         if cfg.GAN.B_DCGAN:
             if cfg.TREE.BRANCH_NUM ==1:
-                from model import D_NET64 as D_NET
+                netG = G_DCGAN()
+                netsD = [D_NET64(b_jcu=False)]
             elif cfg.TREE.BRANCH_NUM == 2:
-                from model import D_NET128 as D_NET
+                netG = G_DCGAN()
+                netsD = [D_NET128(b_jcu=False)]
             else:  # cfg.TREE.BRANCH_NUM == 3:
-                from model import D_NET256 as D_NET
+                netG = G_DCGAN()
+                netsD = [D_NET256(b_jcu=False)]
             # TODO: elif cfg.TREE.BRANCH_NUM > 3:
-            netG = G_DCGAN()
-            netsD = [D_NET(b_jcu=False)]
         else:
-            from model import D_NET64, D_NET128, D_NET256
             netG = G_NET()
             if cfg.TREE.BRANCH_NUM > 0:
                 netsD.append(D_NET64())
@@ -242,7 +242,8 @@ class condGANTrainer(object):
                 ######################################################
                 # (1) Prepare training data and Compute text embeddings
                 ######################################################
-                data = data_iter.next()
+                # data = data_iter.next()
+                data = next(data_iter)
                 imgs, captions, cap_lens, class_ids, keys = prepare_data(data)
 
                 hidden = text_encoder.init_hidden(batch_size)
@@ -274,7 +275,7 @@ class condGANTrainer(object):
                     errD.backward()
                     optimizersD[i].step()
                     errD_total += errD
-                    D_logs += 'errD%d: %.2f ' % (i, errD.data[0])
+                    D_logs += 'errD%d: %.2f ' % (i, errD.data)
 
                 #######################################################
                 # (4) Update G network: maximize log(D(G(z)))
@@ -291,7 +292,7 @@ class condGANTrainer(object):
                                    words_embs, sent_emb, match_labels, cap_lens, class_ids)
                 kl_loss = KL_loss(mu, logvar)
                 errG_total += kl_loss
-                G_logs += 'kl_loss: %.2f ' % kl_loss.data[0]
+                G_logs += 'kl_loss: %.2f ' % kl_loss.data
                 # backward and update parameters
                 errG_total.backward()
                 optimizerG.step()
@@ -318,7 +319,7 @@ class condGANTrainer(object):
             print('''[%d/%d][%d]
                   Loss_D: %.2f Loss_G: %.2f Time: %.2fs'''
                   % (epoch, self.max_epoch, self.num_batches,
-                     errD_total.data[0], errG_total.data[0],
+                     errD_total.data, errG_total.data,
                      end_t - start_t))
 
             if epoch % cfg.TRAIN.SNAPSHOT_INTERVAL == 0:  # and epoch != 0:

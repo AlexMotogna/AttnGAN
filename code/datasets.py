@@ -80,7 +80,7 @@ def get_imgs(img_path, imsize, bbox=None,
         for i in range(cfg.TREE.BRANCH_NUM):
             # print(imsize[i])
             if i < (cfg.TREE.BRANCH_NUM - 1):
-                re_img = transforms.Scale(imsize[i])(img)
+                re_img = transforms.Resize(imsize[i])(img)
             else:
                 re_img = img
             ret.append(normalize(re_img))
@@ -93,6 +93,7 @@ class TextDataset(data.Dataset):
                  base_size=64,
                  transform=None, target_transform=None):
         self.transform = transform
+        self.split = split
         self.norm = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
@@ -106,10 +107,7 @@ class TextDataset(data.Dataset):
 
         self.data = []
         self.data_dir = data_dir
-        if data_dir.find('birds') != -1:
-            self.bbox = self.load_bbox()
-        else:
-            self.bbox = None
+        self.bbox = None
         split_dir = os.path.join(data_dir, split)
 
         self.filenames, self.captions, self.ixtoword, \
@@ -118,36 +116,13 @@ class TextDataset(data.Dataset):
         self.class_id = self.load_class_id(split_dir, len(self.filenames))
         self.number_example = len(self.filenames)
 
-    def load_bbox(self):
-        data_dir = self.data_dir
-        bbox_path = os.path.join(data_dir, 'CUB_200_2011/bounding_boxes.txt')
-        df_bounding_boxes = pd.read_csv(bbox_path,
-                                        delim_whitespace=True,
-                                        header=None).astype(int)
-        #
-        filepath = os.path.join(data_dir, 'CUB_200_2011/images.txt')
-        df_filenames = \
-            pd.read_csv(filepath, delim_whitespace=True, header=None)
-        filenames = df_filenames[1].tolist()
-        print('Total filenames: ', len(filenames), filenames[0])
-        #
-        filename_bbox = {img_file[:-4]: [] for img_file in filenames}
-        numImgs = len(filenames)
-        for i in xrange(0, numImgs):
-            # bbox = [x-left, y-top, width, height]
-            bbox = df_bounding_boxes.iloc[i][1:].tolist()
-
-            key = filenames[i][:-4]
-            filename_bbox[key] = bbox
-        #
-        return filename_bbox
-
     def load_captions(self, data_dir, filenames):
         all_captions = []
         for i in range(len(filenames)):
             cap_path = '%s/text/%s.txt' % (data_dir, filenames[i])
             with open(cap_path, "r") as f:
-                captions = f.read().decode('utf8').split('\n')
+                # captions = f.read().decode('utf8').split('\n')
+                captions = f.read().split('\n')
                 cnt = 0
                 for cap in captions:
                     if len(cap) == 0:
@@ -167,6 +142,7 @@ class TextDataset(data.Dataset):
                         t = t.encode('ascii', 'ignore').decode('ascii')
                         if len(t) > 0:
                             tokens_new.append(t)
+
                     all_captions.append(tokens_new)
                     cnt += 1
                     if cnt == self.embeddings_num:
@@ -226,6 +202,7 @@ class TextDataset(data.Dataset):
 
             train_captions, test_captions, ixtoword, wordtoix, n_words = \
                 self.build_dictionary(train_captions, test_captions)
+
             with open(filepath, 'wb') as f:
                 pickle.dump([train_captions, test_captions,
                              ixtoword, wordtoix], f, protocol=2)
@@ -258,17 +235,25 @@ class TextDataset(data.Dataset):
 
     def load_filenames(self, data_dir, split):
         filepath = '%s/%s/filenames.pickle' % (data_dir, split)
+
         if os.path.isfile(filepath):
             with open(filepath, 'rb') as f:
                 filenames = pickle.load(f)
-            print('Load filenames from: %s (%d)' % (filepath, len(filenames)))
+                print('Load filenames from: %s (%d)' % (filepath, len(filenames)))
         else:
-            filenames = []
+            filenamesPath = os.path.join(self.data_dir, split) + ".txt"
+            with open(filenamesPath, 'r') as f:
+                filenames = [line.rstrip('\n') for line in f]
+                picklefile = open(filepath, 'wb')
+                pickle.dump(filenames, picklefile)
+                print('Saved filenames from: %s (%d)' % (filepath, len(filenames)))
+                    
         return filenames
 
     def get_caption(self, sent_ix):
         # a list of indices for a sentence
         sent_caption = np.asarray(self.captions[sent_ix]).astype('int64')
+
         if (sent_caption == 0).sum() > 0:
             print('ERROR: do not need END (0) token', sent_caption)
         num_words = len(sent_caption)
@@ -291,18 +276,14 @@ class TextDataset(data.Dataset):
         key = self.filenames[index]
         cls_id = self.class_id[index]
         #
-        if self.bbox is not None:
-            bbox = self.bbox[key]
-            data_dir = '%s/CUB_200_2011' % self.data_dir
-        else:
-            bbox = None
-            data_dir = self.data_dir
+        bbox = None
+        data_dir = self.data_dir
         #
         img_name = '%s/images/%s.jpg' % (data_dir, key)
         imgs = get_imgs(img_name, self.imsize,
                         bbox, self.transform, normalize=self.norm)
         # random select a sentence
-        sent_ix = random.randint(0, self.embeddings_num)
+        sent_ix = random.randint(0, self.embeddings_num - 1)
         new_sent_ix = index * self.embeddings_num + sent_ix
         caps, cap_len = self.get_caption(new_sent_ix)
         return imgs, caps, cap_len, cls_id, key

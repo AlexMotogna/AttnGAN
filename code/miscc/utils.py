@@ -32,7 +32,7 @@ def drawCaption(convas, captions, ixtoword, vis_size, off1=2, off2=2):
     img_txt = Image.fromarray(convas)
     # get a font
     # fnt = None  # ImageFont.truetype('Pillow/Tests/fonts/FreeMono.ttf', 50)
-    fnt = ImageFont.truetype('Pillow/Tests/fonts/FreeMono.ttf', 50)
+    fnt = ImageFont.load_default()
     # get a drawing context
     d = ImageDraw.Draw(img_txt)
     sentence_list = []
@@ -75,7 +75,8 @@ def build_super_images(real_imgs, captions, ixtoword,
 
 
     real_imgs = \
-        nn.Upsample(size=(vis_size, vis_size), mode='bilinear')(real_imgs)
+        nn.functional.interpolate(real_imgs,size=(vis_size, vis_size),
+                                  mode='bilinear', align_corners=False)
     # [-1, 1] --> [0, 1]
     real_imgs.add_(1).div_(2).mul_(255)
     real_imgs = real_imgs.data.numpy()
@@ -86,7 +87,8 @@ def build_super_images(real_imgs, captions, ixtoword,
     post_pad = np.zeros([pad_sze[1], pad_sze[2], 3])
     if lr_imgs is not None:
         lr_imgs = \
-            nn.Upsample(size=(vis_size, vis_size), mode='bilinear')(lr_imgs)
+            nn.functional.interpolate(lr_imgs,size=(vis_size, vis_size),
+                                  mode='bilinear', align_corners=False)
         # [-1, 1] --> [0, 1]
         lr_imgs.add_(1).div_(2).mul_(255)
         lr_imgs = lr_imgs.data.numpy()
@@ -129,7 +131,8 @@ def build_super_images(real_imgs, captions, ixtoword,
             if (vis_size // att_sze) > 1:
                 one_map = \
                     skimage.transform.pyramid_expand(one_map, sigma=20,
-                                                     upscale=vis_size // att_sze)
+                                                     upscale=vis_size // att_sze,
+                                                     multichannel=True)
             row_beforeNorm.append(one_map)
             minV = one_map.min()
             maxV = one_map.max()
@@ -185,7 +188,8 @@ def build_super_images2(real_imgs, captions, cap_lens, ixtoword,
                            dtype=np.uint8)
 
     real_imgs = \
-        nn.Upsample(size=(vis_size, vis_size), mode='bilinear')(real_imgs)
+        nn.functional.interpolate(real_imgs,size=(vis_size, vis_size),
+                                    mode='bilinear', align_corners=False)
     # [-1, 1] --> [0, 1]
     real_imgs.add_(1).div_(2).mul_(255)
     real_imgs = real_imgs.data.numpy()
@@ -228,7 +232,8 @@ def build_super_images2(real_imgs, captions, cap_lens, ixtoword,
             if (vis_size // att_sze) > 1:
                 one_map = \
                     skimage.transform.pyramid_expand(one_map, sigma=20,
-                                                     upscale=vis_size // att_sze)
+                                                     upscale=vis_size // att_sze,
+                                                     multichannel=True)
             minV = one_map.min()
             maxV = one_map.max()
             one_map = (one_map - minV) / (maxV - minV)
@@ -286,12 +291,12 @@ def build_super_images2(real_imgs, captions, cap_lens, ixtoword,
 def weights_init(m):
     classname = m.__class__.__name__
     if classname.find('Conv') != -1:
-        nn.init.orthogonal(m.weight.data, 1.0)
+        nn.init.orthogonal_(m.weight.data, 1.0)
     elif classname.find('BatchNorm') != -1:
         m.weight.data.normal_(1.0, 0.02)
         m.bias.data.fill_(0)
     elif classname.find('Linear') != -1:
-        nn.init.orthogonal(m.weight.data, 1.0)
+        nn.init.orthogonal_(m.weight.data, 1.0)
         if m.bias is not None:
             m.bias.data.fill_(0.0)
 
@@ -306,11 +311,33 @@ def copy_G_params(model):
     return flatten
 
 
+####################################################################
 def mkdir_p(path):
     try:
         os.makedirs(path)
-    except OSError as exc:  # Python >2.5
+    except OSError as exc:  # Python > 2.5
         if exc.errno == errno.EEXIST and os.path.isdir(path):
             pass
         else:
             raise
+
+def collapse_dirs( root_dir, final_dir, copy = False, ext = '.png' ):
+    """Moves files of extension `ext` to `final_dir` and returns a list of the src and dst paths"""
+    orig_paths = []
+    final_paths = []
+    mkdir_p( final_dir )
+    for root, _, files in islice( os.walk( root_dir ), 1, None ):
+        if root != final_dir:
+            for f in files:
+                if f.endswith( ext ):
+                    orig_paths.append( os.path.join( root, f ) )
+                    final_paths.append( os.path.join( final_dir, f ) )
+    for orig_path, final_path in zip( orig_paths, final_paths ):
+        shutil.move( orig_path, final_path ) if not copy else shutil.copy( orig_path, final_path )
+    return orig_paths, final_paths
+
+def mv_to_paths( orig_paths, final_paths, ext = '.png' ):
+    assert ( len( orig_paths ) == len( final_paths ) )
+    for orig_path, final_path in zip( orig_paths, final_paths ):
+        if orig_path.endswith( ext ):
+            shutil.move( orig_path, final_path )
