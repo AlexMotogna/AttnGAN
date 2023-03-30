@@ -2,6 +2,7 @@ CONFIG_NAME: 'GAN'
 
 DATASET_NAME: 'covers'
 DATA_DIR: './covers/BOOK_DB'
+OUTPUT_DIR: '../output'
 GPU_ID: 0
 WORKERS: 4
 

@@ -13,6 +13,7 @@ cfg = __C
 __C.DATASET_NAME = 'covers'
 __C.CONFIG_NAME = ''
 __C.DATA_DIR = './covers/BOOK_DB'
+__C.OUTPUT_DIR = '../output'
 __C.GPU_ID = 0
 __C.CUDA = True
 __C.WORKERS = 6
