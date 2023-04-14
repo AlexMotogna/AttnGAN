@@ -1,0 +1,41 @@
+CONFIG_NAME: 'GAN'
+
+DATASET_NAME: 'covers'
+DATA_DIR: '../../../dataset/BOOK_DB'
+OUTPUT_DIR: '../../../output'
+GPU_ID: 0
+WORKERS: 4
+CUDA: True
+
+
+TREE:
+    BRANCH_NUM: 3
+
+
+TRAIN:
+    FLAG: True
+    NET_G: ''  # Preload model
+    B_NET_D: True
+    BATCH_SIZE: 32 
+    MAX_EPOCH: 600
+    SNAPSHOT_INTERVAL: 50
+    DISCRIMINATOR_LR: 0.002
+    GENERATOR_LR: 0.002
+    #
+    NET_E : '../../../models/text_encoder300.pth' 
+    SMOOTH:
+        GAMMA1: 4.0 
+        GAMMA2: 5.0
+        GAMMA3: 10.0
+        LAMBDA: 5.0
+
+
+GAN:
+    DF_DIM: 32
+    GF_DIM: 32
+    Z_DIM: 100
+    R_NUM: 2
+
+TEXT:
+    EMBEDDING_DIM: 256 
+    CAPTIONS_PER_IMAGE: 4
