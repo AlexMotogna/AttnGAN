@@ -1,7 +1,7 @@
 CONFIG_NAME: 'EVAL'
 
 DATASET_NAME: 'covers'
-DATA_DIR: './covers/BOOK_DB'
+DATA_DIR: '../data/covers/BOOK_DB'
 OUTPUT_DIR: '../output'
 GPU_ID: 3
 WORKERS: 1
@@ -13,10 +13,10 @@ TREE:
 
 TRAIN:
     FLAG: False
-    NET_G: '../models/bird_AttnGAN2.pth'
+    NET_G: '../DAMSMencoders/Run1/netG_epoch_600.pth'
     B_NET_D: False
     BATCH_SIZE: 100
-    NET_E: '../DAMSMencoders/bird/text_encoder200.pth'
+    NET_E: '../DAMSMencoders/Run1/text_encoder300.pth'
 
 
 GAN:
