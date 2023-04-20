@@ -283,7 +283,12 @@ class TextDataset(data.Dataset):
         imgs = get_imgs(img_name, self.imsize,
                         bbox, self.transform, normalize=self.norm)
         # random select a sentence
-        sent_ix = random.randint(0, self.embeddings_num - 1)
+
+        if(self.embeddings_num == 1):
+            sent_ix = 0
+        else:
+            sent_ix = random.randint(0, self.embeddings_num - 1)
+        
         new_sent_ix = index * self.embeddings_num + sent_ix
         caps, cap_len = self.get_caption(new_sent_ix)
         return imgs, caps, cap_len, cls_id, key
