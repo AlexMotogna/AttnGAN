@@ -46,6 +46,10 @@ class condGANTrainer(object):
         self.data_loader = data_loader
         self.num_batches = len(self.data_loader)
 
+        self.log_filename = output_dir + "/log.txt"
+        f = open(self.log_filename, "x")
+        f.close()
+
     def build_models(self):
         # ###################encoders######################################## #
         if cfg.TRAIN.NET_E == '':
@@ -303,7 +307,7 @@ class condGANTrainer(object):
                 if gen_iterations % 100 == 0:
                     print(D_logs + '\n' + G_logs)
                 # save images
-                if gen_iterations % 5000 == 0:
+                if gen_iterations % 20000 == 0:
                     backup_para = copy_G_params(netG.module)
                     load_params(netG.module, avg_param_G)
                     self.save_img_results(netG.module, fixed_noise, sent_emb,
@@ -322,6 +326,14 @@ class condGANTrainer(object):
                   % (epoch, self.max_epoch, self.num_batches,
                      errD_total.data, errG_total.data,
                      end_t - start_t))
+            
+            f = open(self.log_filename, "a")
+            f.write('''[%d/%d][%d]
+                  Loss_D: %.2f Loss_G: %.2f Time: %.2fs \n'''
+                  % (epoch, self.max_epoch, self.num_batches,
+                     errD_total.data, errG_total.data,
+                     end_t - start_t))
+            f.close()
 
             if epoch % cfg.TRAIN.SNAPSHOT_INTERVAL == 0:  # and epoch != 0:
                 self.save_model(netG.module, avg_param_G, netsD, epoch)
