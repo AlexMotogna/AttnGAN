@@ -123,18 +123,18 @@ class condGANTrainer(object):
                     netsD[i].load_state_dict(state_dict)
         # ########################################################### #
         if cfg.CUDA:
-            text_encoder = nn.DataParallel(text_encoder).cuda()
-            image_encoder = nn.DataParallel(image_encoder).cuda()
-            netG = nn.DataParallel(netG).cuda()
+            text_encoder = nn.DataParallel(text_encoder.cuda())
+            image_encoder = nn.DataParallel(image_encoder.cuda())
+            netG = nn.DataParallel(netG.cuda())
             for i in range(len(netsD)):
-                netsD[i] = nn.DataParallel(netsD[i]).cuda()
+                netsD[i] = nn.DataParallel(netsD[i].cuda())
         return [text_encoder, image_encoder, netG, netsD, epoch]
 
     def define_optimizers(self, netG, netsD):
         optimizersD = []
         num_Ds = len(netsD)
         for i in range(num_Ds):
-            opt = optim.Adam(netsD[i].parameters(),
+            opt = optim.Adam(netsD[i].module.parameters(),
                              lr=cfg.TRAIN.DISCRIMINATOR_LR,
                              betas=(0.5, 0.999))
             optimizersD.append(opt)
@@ -165,7 +165,7 @@ class condGANTrainer(object):
         load_params(netG, backup_para)
         #
         for i in range(len(netsD)):
-            netD = netsD[i]
+            netD = netsD[i].module
             torch.save(netD.state_dict(),
                 '%s/netD%d.pth' % (self.model_dir, i))
         print('Save G/Ds models.')
@@ -219,7 +219,7 @@ class condGANTrainer(object):
     def train(self):
         text_encoder, image_encoder, netG, netsD, start_epoch = self.build_models()
         avg_param_G = copy_G_params(netG.module)
-        optimizerG, optimizersD = self.define_optimizers(netG.module, netsD.module)
+        optimizerG, optimizersD = self.define_optimizers(netG.module, netsD)
         real_labels, fake_labels, match_labels = self.prepare_labels()
 
         batch_size = self.batch_size
@@ -238,7 +238,7 @@ class condGANTrainer(object):
             step = 0
             while step < self.num_batches:
                 # reset requires_grad to be trainable for all Ds
-                # self.set_requires_grad_value(netsD.module, True)
+                # self.set_requires_grad_value(netsD, True)
 
                 ######################################################
                 # (1) Prepare training data and Compute text embeddings
@@ -286,10 +286,10 @@ class condGANTrainer(object):
                 gen_iterations += 1
 
                 # do not need to compute gradient for Ds
-                # self.set_requires_grad_value(netsD.module, False)
+                # self.set_requires_grad_value(netsD, False)
                 netG.module.zero_grad()
                 errG_total, G_logs = \
-                    generator_loss(netsD.module, image_encoder.module, fake_imgs, real_labels,
+                    generator_loss(netsD, image_encoder.module, fake_imgs, real_labels,
                                    words_embs, sent_emb, match_labels, cap_lens, class_ids)
                 kl_loss = KL_loss(mu, logvar)
                 errG_total += kl_loss
@@ -303,7 +303,7 @@ class condGANTrainer(object):
                 if gen_iterations % 100 == 0:
                     print(D_logs + '\n' + G_logs)
                 # save images
-                if gen_iterations % 1000 == 0:
+                if gen_iterations % 5000 == 0:
                     backup_para = copy_G_params(netG.module)
                     load_params(netG.module, avg_param_G)
                     self.save_img_results(netG.module, fixed_noise, sent_emb,
@@ -324,9 +324,9 @@ class condGANTrainer(object):
                      end_t - start_t))
 
             if epoch % cfg.TRAIN.SNAPSHOT_INTERVAL == 0:  # and epoch != 0:
-                self.save_model(netG.module, avg_param_G, netsD.module, epoch)
+                self.save_model(netG.module, avg_param_G, netsD, epoch)
 
-        self.save_model(netG.module, avg_param_G, netsD.module, self.max_epoch)
+        self.save_model(netG.module, avg_param_G, netsD, self.max_epoch)
 
     def save_singleimages(self, images, filenames, save_dir,
                           split_dir, sentenceID=0):

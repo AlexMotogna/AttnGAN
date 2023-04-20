@@ -187,9 +187,9 @@ def build_models(dataset, batch_size):
         start_epoch = int(start_epoch) + 1
         print('start_epoch', start_epoch)
     if cfg.CUDA:
-        text_encoder = nn.DataParallel(text_encoder).cuda()
-        image_encoder = nn.DataParallel(image_encoder).cuda()
-        labels = nn.DataParallel(labels).cuda()
+        text_encoder = nn.DataParallel(text_encoder.cuda())
+        image_encoder = nn.DataParallel(image_encoder.cuda())
+        labels = nn.DataParallel(labels.cuda())
 
     return text_encoder, image_encoder, labels, start_epoch
 

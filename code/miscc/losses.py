@@ -170,11 +170,11 @@ def generator_loss(netsD, image_encoder, fake_imgs, real_labels,
     # Forward
     errG_total = 0
     for i in range(numDs):
-        features = netsD[i](fake_imgs[i])
-        cond_logits = netsD[i].COND_DNET(features, sent_emb)
+        features = netsD[i].module(fake_imgs[i])
+        cond_logits = netsD[i].module.COND_DNET(features, sent_emb)
         cond_errG = nn.BCELoss()(cond_logits, real_labels)
-        if netsD[i].UNCOND_DNET is  not None:
-            logits = netsD[i].UNCOND_DNET(features)
+        if netsD[i].module.UNCOND_DNET is  not None:
+            logits = netsD[i].module.UNCOND_DNET(features)
             errG = nn.BCELoss()(logits, real_labels)
             g_loss = errG + cond_errG
         else:
