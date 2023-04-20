@@ -255,8 +255,8 @@ if __name__ == "__main__":
 
     # Train ##############################################################
     text_encoder, image_encoder, labels, start_epoch = build_models(dataset, batch_size)
-    para = list(text_encoder.parameters())
-    for v in image_encoder.parameters():
+    para = list(text_encoder.module.parameters())
+    for v in image_encoder.module.parameters():
         if v.requires_grad:
             para.append(v)
     # optimizer = optim.Adam(para, lr=cfg.TRAIN.ENCODER_LR, betas=(0.5, 0.999))
@@ -266,13 +266,13 @@ if __name__ == "__main__":
         for epoch in range(start_epoch, cfg.TRAIN.MAX_EPOCH):
             optimizer = optim.Adam(para, lr=lr, betas=(0.5, 0.999))
             epoch_start_time = time.time()
-            count = train(dataloader, image_encoder, text_encoder,
-                          batch_size, labels, optimizer, epoch,
+            count = train(dataloader, image_encoder.module, text_encoder.module,
+                          batch_size, labels.module, optimizer, epoch,
                           dataset.ixtoword, image_dir)
             print('-' * 89)
             if len(dataloader_val) > 0:
-                s_loss, w_loss = evaluate(dataloader_val, image_encoder,
-                                          text_encoder, batch_size, labels)
+                s_loss, w_loss = evaluate(dataloader_val, image_encoder.module,
+                                          text_encoder.module, batch_size, labels.module)
                 print('| end epoch {:3d} | valid loss '
                       '{:5.2f} {:5.2f} | lr {:.5f}|'
                       .format(epoch, s_loss, w_loss, lr))
@@ -282,9 +282,9 @@ if __name__ == "__main__":
 
             if (epoch % cfg.TRAIN.SNAPSHOT_INTERVAL == 0 or
                 epoch == cfg.TRAIN.MAX_EPOCH):
-                torch.save(image_encoder.state_dict(),
+                torch.save(image_encoder.module.state_dict(),
                            '%s/image_encoder%d.pth' % (model_dir, epoch))
-                torch.save(text_encoder.state_dict(),
+                torch.save(text_encoder.module.state_dict(),
                            '%s/text_encoder%d.pth' % (model_dir, epoch))
                 print('Save G/Ds models.')
     except KeyboardInterrupt:
