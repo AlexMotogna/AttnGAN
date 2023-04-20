@@ -123,11 +123,11 @@ class condGANTrainer(object):
                     netsD[i].load_state_dict(state_dict)
         # ########################################################### #
         if cfg.CUDA:
-            text_encoder = text_encoder.cuda()
-            image_encoder = image_encoder.cuda()
-            netG.cuda()
+            text_encoder = nn.DataParallel(text_encoder).cuda()
+            image_encoder = nn.DataParallel(image_encoder).cuda()
+            netG = nn.DataParallel(netG).cuda()
             for i in range(len(netsD)):
-                netsD[i].cuda()
+                netsD[i] = nn.DataParallel(netsD[i]).cuda()
         return [text_encoder, image_encoder, netG, netsD, epoch]
 
     def define_optimizers(self, netG, netsD):

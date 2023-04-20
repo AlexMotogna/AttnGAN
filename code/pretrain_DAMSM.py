@@ -187,9 +187,9 @@ def build_models(dataset, batch_size):
         start_epoch = int(start_epoch) + 1
         print('start_epoch', start_epoch)
     if cfg.CUDA:
-        text_encoder = text_encoder.cuda()
-        image_encoder = image_encoder.cuda()
-        labels = labels.cuda()
+        text_encoder = nn.DataParallel(text_encoder).cuda()
+        image_encoder = nn.DataParallel(image_encoder).cuda()
+        labels = nn.DataParallel(labels).cuda()
 
     return text_encoder, image_encoder, labels, start_epoch
 
@@ -198,11 +198,6 @@ if __name__ == "__main__":
     args = parse_args()
     if args.cfg_file is not None:
         cfg_from_file(args.cfg_file)
-
-    if args.gpu_id == -1:
-        cfg.CUDA = False
-    else:
-        cfg.GPU_ID = args.gpu_id
 
     if args.data_dir != '':
         cfg.DATA_DIR = args.data_dir
