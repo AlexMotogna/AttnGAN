@@ -283,7 +283,7 @@ if __name__ == "__main__":
                 
                 f = open(log_filename, "a")
                 f.write('| end epoch {:3d} | valid loss '
-                      '{:5.2f} {:5.2f} | lr {:.5f}|'
+                      '{:5.2f} {:5.2f} | lr {:.5f}| \n'
                       .format(epoch, s_loss, w_loss, lr))
                 f.close()
 
