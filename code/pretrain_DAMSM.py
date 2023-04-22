@@ -225,6 +225,10 @@ if __name__ == "__main__":
     mkdir_p(model_dir)
     mkdir_p(image_dir)
 
+    log_filename = output_dir + "/log.txt"
+    f = open(log_filename, "x")
+    f.close()
+
     # torch.cuda.set_device(cfg.GPU_ID)
     cudnn.benchmark = True
 
@@ -276,6 +280,13 @@ if __name__ == "__main__":
                 print('| end epoch {:3d} | valid loss '
                       '{:5.2f} {:5.2f} | lr {:.5f}|'
                       .format(epoch, s_loss, w_loss, lr))
+                
+                f = open(log_filename, "a")
+                f.write('| end epoch {:3d} | valid loss '
+                      '{:5.2f} {:5.2f} | lr {:.5f}|'
+                      .format(epoch, s_loss, w_loss, lr))
+                f.close()
+
             print('-' * 89)
             if lr > cfg.TRAIN.ENCODER_LR/10.:
                 lr *= 0.98
