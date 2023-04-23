@@ -211,9 +211,9 @@ def cleanup():
     dist.destroy_process_group()
 
 
-def run(world_size, log_filename, cfg):
-    rank = torch.cuda.current_device()
-    print(rank)
+def run(rank, world_size, log_filename, cfg):
+    # rank = torch.cuda.current_device()
+    # print(rank)
     setup(rank, world_size)
 
     # Get data loader ##################################################
