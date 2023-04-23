@@ -214,6 +214,7 @@ def cleanup():
 def run(world_size, log_filename, cfg):
     rank = torch.cuda.current_device()
     print(rank)
+    setup(rank, world_size)
 
     # Get data loader ##################################################
     imsize = cfg.TREE.BASE_SIZE * (2 ** (cfg.TREE.BRANCH_NUM-1))
@@ -256,6 +257,10 @@ def run(world_size, log_filename, cfg):
     try:
         lr = cfg.TRAIN.ENCODER_LR
         for epoch in range(start_epoch, cfg.TRAIN.MAX_EPOCH):
+
+            dataloader.sampler.set_epoch(epoch)
+            dataloader_val.sampler.set_epoch(epoch)
+
             optimizer = optim.Adam(para, lr=lr, betas=(0.5, 0.999))
             epoch_start_time = time.time()
             count = train(dataloader, image_encoder, text_encoder,
