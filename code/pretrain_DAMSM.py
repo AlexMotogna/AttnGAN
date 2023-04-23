@@ -187,9 +187,9 @@ def build_models(dataset, batch_size):
         start_epoch = int(start_epoch) + 1
         print('start_epoch', start_epoch)
     if cfg.CUDA:
-        text_encoder = nn.DataParallel(text_encoder.cuda()).module
-        image_encoder = nn.DataParallel(image_encoder.cuda()).module
-        labels = nn.DataParallel(labels.cuda()).module
+        text_encoder = nn.DataParallel(text_encoder.cuda(), device_ids=list(range(torch.cuda.device_count()))).module
+        image_encoder = nn.DataParallel(image_encoder.cuda(), device_ids=list(range(torch.cuda.device_count()))).module
+        labels = nn.DataParallel(labels.cuda(), device_ids=list(range(torch.cuda.device_count()))).module
 
     return text_encoder, image_encoder, labels, start_epoch
 
@@ -258,6 +258,9 @@ if __name__ == "__main__":
         shuffle=True, num_workers=int(cfg.WORKERS))
 
     # Train ##############################################################
+
+    print(torch.cuda.device_count())
+
     text_encoder, image_encoder, labels, start_epoch = build_models(dataset, batch_size)
     para = list(text_encoder.parameters())
     for v in image_encoder.parameters():
@@ -273,6 +276,7 @@ if __name__ == "__main__":
             count = train(dataloader, image_encoder, text_encoder,
                           batch_size, labels, optimizer, epoch,
                           dataset.ixtoword, image_dir)
+
             print('-' * 89)
             if len(dataloader_val) > 0:
                 s_loss, w_loss = evaluate(dataloader_val, image_encoder,
