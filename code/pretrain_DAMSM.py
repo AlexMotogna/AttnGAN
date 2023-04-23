@@ -27,6 +27,11 @@ import torch.optim as optim
 from torch.autograd import Variable
 import torch.backends.cudnn as cudnn
 import torchvision.transforms as transforms
+import torch.distributed as dist
+from torch.utils.data.distributed import DistributedSampler
+from torch.nn.parallel import DistributedDataParallel
+import torch.multiprocessing as mp
+
 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning) 
@@ -165,7 +170,7 @@ def evaluate(dataloader, cnn_model, rnn_model, batch_size, labels):
     return s_cur_loss, w_cur_loss
 
 
-def build_models(dataset, batch_size):
+def build_models(dataset, batch_size, rank):
     # build model ############################################################
     text_encoder = RNN_ENCODER(dataset.n_words, nhidden=cfg.TEXT.EMBEDDING_DIM)
     image_encoder = CNN_ENCODER(cfg.TEXT.EMBEDDING_DIM)
@@ -187,50 +192,28 @@ def build_models(dataset, batch_size):
         start_epoch = int(start_epoch) + 1
         print('start_epoch', start_epoch)
     if cfg.CUDA:
-        text_encoder = nn.DataParallel(text_encoder.cuda(), device_ids=list(range(torch.cuda.device_count()))).module
-        image_encoder = nn.DataParallel(image_encoder.cuda(), device_ids=list(range(torch.cuda.device_count()))).module
-        labels = nn.DataParallel(labels.cuda(), device_ids=list(range(torch.cuda.device_count()))).module
+        text_encoder = DistributedDataParallel(text_encoder.to(rank), device_ids=[rank], output_device=rank, find_unused_parameters=True)
+        image_encoder = DistributedDataParallel(image_encoder.to(rank), device_ids=[rank], output_device=rank, find_unused_parameters=True)
+        labels = DistributedDataParallel(labels.to(rank), device_ids=[rank], output_device=rank, find_unused_parameters=True)
+        # text_encoder = nn.DataParallel(text_encoder.cuda(), device_ids=list(range(torch.cuda.device_count()))).module
+        # image_encoder = nn.DataParallel(image_encoder.cuda(), device_ids=list(range(torch.cuda.device_count()))).module
+        # labels = nn.DataParallel(labels.cuda(), device_ids=list(range(torch.cuda.device_count()))).module
 
     return text_encoder, image_encoder, labels, start_epoch
 
 
-if __name__ == "__main__":
-    args = parse_args()
-    if args.cfg_file is not None:
-        cfg_from_file(args.cfg_file)
+def setup(rank, world_size):
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
+    dist.init_process_group("nccl", rank=rank, world_size=world_size)
 
-    if args.data_dir != '':
-        cfg.DATA_DIR = args.data_dir
-    print('Using config:')
-    pprint.pprint(cfg)
+def cleanup():
+    dist.destroy_process_group()
 
-    if not cfg.TRAIN.FLAG:
-        args.manualSeed = 100
-    elif args.manualSeed is None:
-        args.manualSeed = random.randint(1, 10000)
-    random.seed(args.manualSeed)
-    np.random.seed(args.manualSeed)
-    torch.manual_seed(args.manualSeed)
-    if cfg.CUDA:
-        torch.cuda.manual_seed_all(args.manualSeed)
 
-    ##########################################################################
-    now = datetime.datetime.now(dateutil.tz.tzlocal())
-    timestamp = now.strftime('%Y_%m_%d_%H_%M_%S')
-    output_dir = '%s/%s_%s_%s' % \
-        (cfg.OUTPUT_DIR, cfg.DATASET_NAME, cfg.CONFIG_NAME, timestamp)
-
-    model_dir = os.path.join(output_dir, 'Model')
-    image_dir = os.path.join(output_dir, 'Image')
-    mkdir_p(model_dir)
-    mkdir_p(image_dir)
-
-    log_filename = output_dir + "/log.txt"
-    f = open(log_filename, "x")
-    f.close()
-
-    # torch.cuda.set_device(cfg.GPU_ID)
-    cudnn.benchmark = True
+def run(world_size, log_filename, cfg):
+    rank = torch.cuda.current_device()
+    print(rank)
 
     # Get data loader ##################################################
     imsize = cfg.TREE.BASE_SIZE * (2 ** (cfg.TREE.BRANCH_NUM-1))
@@ -242,25 +225,27 @@ if __name__ == "__main__":
     dataset = TextDataset(cfg.DATA_DIR, 'train',
                           base_size=cfg.TREE.BASE_SIZE,
                           transform=image_transform)
+    
+    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=False, drop_last=False)
 
     print(dataset.n_words, dataset.embeddings_num)
     assert dataset
     dataloader = torch.utils.data.DataLoader(
         dataset, batch_size=batch_size, drop_last=True,
-        shuffle=True, num_workers=int(cfg.WORKERS))
+        shuffle=True, num_workers=0, sampler=sampler)
 
     # # validation data #
     dataset_val = TextDataset(cfg.DATA_DIR, 'test',
                               base_size=cfg.TREE.BASE_SIZE,
                               transform=image_transform)
+    
+    sampler_val = DistributedSampler(dataset_val, num_replicas=world_size, rank=rank, shuffle=False, drop_last=False)
+
     dataloader_val = torch.utils.data.DataLoader(
         dataset_val, batch_size=batch_size, drop_last=True,
-        shuffle=True, num_workers=int(cfg.WORKERS))
+        shuffle=True, num_workers=0, sampler=sampler_val)
 
     # Train ##############################################################
-
-    print(torch.cuda.device_count())
-
     text_encoder, image_encoder, labels, start_epoch = build_models(dataset, batch_size)
     para = list(text_encoder.parameters())
     for v in image_encoder.parameters():
@@ -297,11 +282,62 @@ if __name__ == "__main__":
 
             if (epoch % cfg.TRAIN.SNAPSHOT_INTERVAL == 0 or
                 epoch == cfg.TRAIN.MAX_EPOCH):
-                torch.save(image_encoder.state_dict(),
-                           '%s/image_encoder%d.pth' % (model_dir, epoch))
-                torch.save(text_encoder.state_dict(),
-                           '%s/text_encoder%d.pth' % (model_dir, epoch))
-                print('Save G/Ds models.')
+                if (rank == 0):
+                    torch.save(image_encoder.state_dict(),
+                            '%s/image_encoder%d.pth' % (model_dir, epoch))
+                    torch.save(text_encoder.state_dict(),
+                            '%s/text_encoder%d.pth' % (model_dir, epoch))
+                    print('Save G/Ds models.')
     except KeyboardInterrupt:
         print('-' * 89)
         print('Exiting from training early')
+    
+    cleanup()
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    if args.cfg_file is not None:
+        cfg_from_file(args.cfg_file)
+
+    if args.data_dir != '':
+        cfg.DATA_DIR = args.data_dir
+    print('Using config:')
+    pprint.pprint(cfg)
+
+    if not cfg.TRAIN.FLAG:
+        args.manualSeed = 100
+    elif args.manualSeed is None:
+        args.manualSeed = random.randint(1, 10000)
+    random.seed(args.manualSeed)
+    np.random.seed(args.manualSeed)
+    torch.manual_seed(args.manualSeed)
+    if cfg.CUDA:
+        torch.cuda.manual_seed_all(args.manualSeed)
+
+    world_size = torch.cuda.device_count()
+    print(world_size)
+
+    ##########################################################################
+    now = datetime.datetime.now(dateutil.tz.tzlocal())
+    timestamp = now.strftime('%Y_%m_%d_%H_%M_%S')
+    output_dir = '%s/%s_%s_%s' % \
+        (cfg.OUTPUT_DIR, cfg.DATASET_NAME, cfg.CONFIG_NAME, timestamp)
+
+    model_dir = os.path.join(output_dir, 'Model')
+    image_dir = os.path.join(output_dir, 'Image')
+    mkdir_p(model_dir)
+    mkdir_p(image_dir)
+
+    log_filename = output_dir + "/log.txt"
+    f = open(log_filename, "x")
+    f.close()
+
+    mp.spawn(
+        run,
+        args=(world_size, log_filename, cfg),
+        nprocs=world_size
+    )
+
+    # torch.cuda.set_device(cfg.GPU_ID)
+    # cudnn.benchmark = True
