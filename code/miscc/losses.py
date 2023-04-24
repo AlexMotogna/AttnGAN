@@ -18,7 +18,7 @@ def cosine_similarity(x1, x2, dim=1, eps=1e-8):
 
 
 def sent_loss(cnn_code, rnn_code, labels, class_ids,
-              batch_size, eps=1e-8):
+              batch_size, rank, eps=1e-8):
     # ### Mask mis-match samples  ###
     # that come from the same class as the real sample ###
     masks = []
@@ -31,7 +31,7 @@ def sent_loss(cnn_code, rnn_code, labels, class_ids,
         # masks: batch_size x batch_size
         masks = torch.ByteTensor(masks)
         if cfg.CUDA:
-            masks = masks.cuda()
+            masks = masks.to(rank)
 
     # --> seq_len x batch_size x nef
     if cnn_code.dim() == 2:
@@ -60,7 +60,7 @@ def sent_loss(cnn_code, rnn_code, labels, class_ids,
 
 
 def words_loss(img_features, words_emb, labels,
-               cap_lens, class_ids, batch_size):
+               cap_lens, class_ids, batch_size, rank):
     """
         words_emb(query): batch x nef x seq_len
         img_features(context): batch x nef x 17 x 17
@@ -118,7 +118,7 @@ def words_loss(img_features, words_emb, labels,
         # masks: batch_size x batch_size
         masks = torch.ByteTensor(masks)
         if cfg.CUDA:
-            masks = masks.cuda()
+            masks = masks.to(rank)
 
     similarities = similarities * cfg.TRAIN.SMOOTH.GAMMA3
     if class_ids is not None:

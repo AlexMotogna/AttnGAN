@@ -54,7 +54,7 @@ def parse_args():
 
 
 def train(dataloader, cnn_model, rnn_model, batch_size,
-          labels, optimizer, epoch, ixtoword, image_dir):
+          labels, optimizer, epoch, ixtoword, image_dir, rank):
     cnn_model.train()
     rnn_model.train()
     s_total_loss0 = 0
@@ -69,7 +69,7 @@ def train(dataloader, cnn_model, rnn_model, batch_size,
         cnn_model.zero_grad()
 
         imgs, captions, cap_lens, \
-            class_ids, keys = prepare_data(data)
+            class_ids, keys = prepare_data(data, rank)
 
 
         # words_features: batch_size x nef x 17 x 17
@@ -85,13 +85,13 @@ def train(dataloader, cnn_model, rnn_model, batch_size,
         words_emb, sent_emb = rnn_model(captions, cap_lens, hidden)
 
         w_loss0, w_loss1, attn_maps = words_loss(words_features, words_emb, labels,
-                                                 cap_lens, class_ids, batch_size)
+                                                 cap_lens, class_ids, batch_size, rank)
         w_total_loss0 += w_loss0.data
         w_total_loss1 += w_loss1.data
         loss = w_loss0 + w_loss1
 
         s_loss0, s_loss1 = \
-            sent_loss(sent_code, sent_emb, labels, class_ids, batch_size)
+            sent_loss(sent_code, sent_emb, labels, class_ids, batch_size, rank)
         loss += s_loss0 + s_loss1
         s_total_loss0 += s_loss0.data
         s_total_loss1 += s_loss1.data
@@ -137,14 +137,14 @@ def train(dataloader, cnn_model, rnn_model, batch_size,
     return count
 
 
-def evaluate(dataloader, cnn_model, rnn_model, batch_size, labels):
+def evaluate(dataloader, cnn_model, rnn_model, batch_size, labels, rank):
     cnn_model.eval()
     rnn_model.eval()
     s_total_loss = 0
     w_total_loss = 0
     for step, data in enumerate(dataloader, 0):
         real_imgs, captions, cap_lens, \
-                class_ids, keys = prepare_data(data)
+                class_ids, keys = prepare_data(data, rank)
 
         words_features, sent_code = cnn_model(real_imgs[-1])
         # nef = words_features.size(1)
@@ -154,11 +154,11 @@ def evaluate(dataloader, cnn_model, rnn_model, batch_size, labels):
         words_emb, sent_emb = rnn_model(captions, cap_lens, hidden)
 
         w_loss0, w_loss1, attn = words_loss(words_features, words_emb, labels,
-                                            cap_lens, class_ids, batch_size)
+                                            cap_lens, class_ids, rank, batch_size)
         w_total_loss += (w_loss0 + w_loss1).data
 
         s_loss0, s_loss1 = \
-            sent_loss(sent_code, sent_emb, labels, class_ids, batch_size)
+            sent_loss(sent_code, sent_emb, labels, class_ids, batch_size, rank)
         s_total_loss += (s_loss0 + s_loss1).data
 
         if step == 50:
@@ -192,12 +192,13 @@ def build_models(dataset, batch_size, rank):
         start_epoch = int(start_epoch) + 1
         print('start_epoch', start_epoch)
     if cfg.CUDA:
-        text_encoder = DistributedDataParallel(text_encoder.to(rank), device_ids=[rank], output_device=rank, find_unused_parameters=True)
-        image_encoder = DistributedDataParallel(image_encoder.to(rank), device_ids=[rank], output_device=rank, find_unused_parameters=True)
-        labels = DistributedDataParallel(labels.to(rank), device_ids=[rank], output_device=rank, find_unused_parameters=True)
+        text_encoder = DistributedDataParallel(text_encoder.to(rank), device_ids=[rank], output_device=rank, find_unused_parameters=True).module
+        image_encoder = DistributedDataParallel(image_encoder.to(rank), device_ids=[rank], output_device=rank, find_unused_parameters=True).module
+        # labels = DistributedDataParallel(labels.to(rank), device_ids=[rank], output_device=rank, find_unused_parameters=True)
         # text_encoder = nn.DataParallel(text_encoder.cuda(), device_ids=list(range(torch.cuda.device_count()))).module
         # image_encoder = nn.DataParallel(image_encoder.cuda(), device_ids=list(range(torch.cuda.device_count()))).module
-        # labels = nn.DataParallel(labels.cuda(), device_ids=list(range(torch.cuda.device_count()))).module
+        # labels = nn.DataParallel(labels.cuda(), device_ids=[rank]).module
+        labels = labels.cuda()
 
     return text_encoder, image_encoder, labels, start_epoch
 
@@ -211,7 +212,7 @@ def cleanup():
     dist.destroy_process_group()
 
 
-def run(rank, world_size, log_filename, cfg):
+def run(rank, world_size, log_filename, cfg, model_dir, image_dir):
     # rank = torch.cuda.current_device()
     # print(rank)
     setup(rank, world_size)
@@ -227,27 +228,27 @@ def run(rank, world_size, log_filename, cfg):
                           base_size=cfg.TREE.BASE_SIZE,
                           transform=image_transform)
     
-    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=False, drop_last=False)
+    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=False)
 
     print(dataset.n_words, dataset.embeddings_num)
     assert dataset
     dataloader = torch.utils.data.DataLoader(
         dataset, batch_size=batch_size, drop_last=True,
-        shuffle=True, num_workers=0, sampler=sampler)
+        shuffle=False, num_workers=0, sampler=sampler)
 
     # # validation data #
     dataset_val = TextDataset(cfg.DATA_DIR, 'test',
                               base_size=cfg.TREE.BASE_SIZE,
                               transform=image_transform)
     
-    sampler_val = DistributedSampler(dataset_val, num_replicas=world_size, rank=rank, shuffle=False, drop_last=False)
+    sampler_val = DistributedSampler(dataset_val, num_replicas=world_size, rank=rank, shuffle=False)
 
     dataloader_val = torch.utils.data.DataLoader(
         dataset_val, batch_size=batch_size, drop_last=True,
-        shuffle=True, num_workers=0, sampler=sampler_val)
+        shuffle=False, num_workers=0, sampler=sampler_val)
 
     # Train ##############################################################
-    text_encoder, image_encoder, labels, start_epoch = build_models(dataset, batch_size)
+    text_encoder, image_encoder, labels, start_epoch = build_models(dataset, batch_size, rank)
     para = list(text_encoder.parameters())
     for v in image_encoder.parameters():
         if v.requires_grad:
@@ -265,12 +266,12 @@ def run(rank, world_size, log_filename, cfg):
             epoch_start_time = time.time()
             count = train(dataloader, image_encoder, text_encoder,
                           batch_size, labels, optimizer, epoch,
-                          dataset.ixtoword, image_dir)
+                          dataset.ixtoword, image_dir, rank)
 
             print('-' * 89)
             if len(dataloader_val) > 0:
                 s_loss, w_loss = evaluate(dataloader_val, image_encoder,
-                                          text_encoder, batch_size, labels)
+                                          text_encoder, batch_size, labels, rank)
                 print('| end epoch {:3d} | valid loss '
                       '{:5.2f} {:5.2f} | lr {:.5f}|'
                       .format(epoch, s_loss, w_loss, lr))
@@ -340,7 +341,7 @@ if __name__ == "__main__":
 
     mp.spawn(
         run,
-        args=(world_size, log_filename, cfg),
+        args=(world_size, log_filename, cfg, model_dir, image_dir),
         nprocs=world_size
     )
 
