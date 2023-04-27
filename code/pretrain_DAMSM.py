@@ -154,7 +154,7 @@ def evaluate(dataloader, cnn_model, rnn_model, batch_size, labels, gpuId):
         words_emb, sent_emb = rnn_model(captions, cap_lens, hidden)
 
         w_loss0, w_loss1, attn = words_loss(words_features, words_emb, labels,
-                                            cap_lens, class_ids, gpuId, batch_size)
+                                            cap_lens, class_ids, batch_size, gpuId)
         w_total_loss += (w_loss0 + w_loss1).data
 
         s_loss0, s_loss1 = \
@@ -198,7 +198,7 @@ def build_models(dataset, batch_size, gpuId):
         # text_encoder = nn.DataParallel(text_encoder.cuda(), device_ids=list(range(torch.cuda.device_count()))).module
         # image_encoder = nn.DataParallel(image_encoder.cuda(), device_ids=list(range(torch.cuda.device_count()))).module
         # labels = nn.DataParallel(labels.cuda(), device_ids=[rank]).module
-        labels = labels.cuda()
+        labels = labels.to(gpuId)
 
     return text_encoder, image_encoder, labels, start_epoch
 
@@ -216,7 +216,7 @@ def run(rank, world_size, log_filename, cfg, model_dir, image_dir):
     # rank = torch.cuda.current_device()
     # print(rank)
     setup(rank, world_size)
-    gpuId = rank % world_size
+    gpuId = rank % torch.cuda.device_count()
 
     # Get data loader ##################################################
     imsize = cfg.TREE.BASE_SIZE * (2 ** (cfg.TREE.BRANCH_NUM-1))
@@ -273,9 +273,10 @@ def run(rank, world_size, log_filename, cfg, model_dir, image_dir):
             if len(dataloader_val) > 0:
                 s_loss, w_loss = evaluate(dataloader_val, image_encoder,
                                           text_encoder, batch_size, labels, gpuId)
+                end_t = time.time()
                 print('| end epoch {:3d} | valid loss '
-                      '{:5.2f} {:5.2f} | lr {:.5f}|'
-                      .format(epoch, s_loss, w_loss, lr))
+                      '{:5.2f} {:5.2f} | lr {:.5f}| time {:5.5f} s |'
+                      .format(epoch, s_loss, w_loss, lr, end_t - epoch_start_time))
                 
                 f = open(log_filename, "a")
                 f.write('| end epoch {:3d} | valid loss '
@@ -322,7 +323,7 @@ if __name__ == "__main__":
     if cfg.CUDA:
         torch.cuda.manual_seed_all(args.manualSeed)
 
-    process_per_gpu = 3
+    process_per_gpu = 1
     world_size = process_per_gpu * torch.cuda.device_count()
     print(world_size)
 
