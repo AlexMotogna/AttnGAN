@@ -268,21 +268,25 @@ def run(rank, world_size, log_filename, cfg, model_dir, image_dir):
             count = train(dataloader, image_encoder, text_encoder,
                           batch_size, labels, optimizer, epoch,
                           dataset.ixtoword, image_dir, gpuId)
+            
+            dist.barrier()
 
             print('-' * 89)
             if len(dataloader_val) > 0:
                 s_loss, w_loss = evaluate(dataloader_val, image_encoder,
                                           text_encoder, batch_size, labels, gpuId)
                 end_t = time.time()
-                print('| end epoch {:3d} | valid loss '
+                print('Rank : {:3d}| end epoch {:3d} | valid loss '
                       '{:5.2f} {:5.2f} | lr {:.5f}| time {:5.5f} s |'
-                      .format(epoch, s_loss, w_loss, lr, end_t - epoch_start_time))
+                      .format(rank, epoch, s_loss, w_loss, lr, end_t - epoch_start_time))
                 
                 f = open(log_filename, "a")
-                f.write('| end epoch {:3d} | valid loss '
-                      '{:5.2f} {:5.2f} | lr {:.5f}| \n'
-                      .format(epoch, s_loss, w_loss, lr))
+                f.write('Rank : {:3d}| end epoch {:3d} | valid loss '
+                      '{:5.2f} {:5.2f} | lr {:.5f}| time {:5.5f} s |'
+                      .format(rank, epoch, s_loss, w_loss, lr, end_t - epoch_start_time))
                 f.close()
+
+            dist.barrier()
 
             print('-' * 89)
             if lr > cfg.TRAIN.ENCODER_LR/10.:
