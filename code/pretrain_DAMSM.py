@@ -194,10 +194,6 @@ def build_models(dataset, batch_size, gpuId):
     if cfg.CUDA:
         text_encoder = DistributedDataParallel(text_encoder.to(gpuId), device_ids=[gpuId], output_device=gpuId, find_unused_parameters=True).module
         image_encoder = DistributedDataParallel(image_encoder.to(gpuId), device_ids=[gpuId], output_device=gpuId, find_unused_parameters=True).module
-        # labels = DistributedDataParallel(labels.to(rank), device_ids=[rank], output_device=rank, find_unused_parameters=True)
-        # text_encoder = nn.DataParallel(text_encoder.cuda(), device_ids=list(range(torch.cuda.device_count()))).module
-        # image_encoder = nn.DataParallel(image_encoder.cuda(), device_ids=list(range(torch.cuda.device_count()))).module
-        # labels = nn.DataParallel(labels.cuda(), device_ids=[rank]).module
         labels = labels.to(gpuId)
 
     return text_encoder, image_encoder, labels, start_epoch

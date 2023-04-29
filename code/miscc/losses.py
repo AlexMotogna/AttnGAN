@@ -163,7 +163,7 @@ def discriminator_loss(netD, real_imgs, fake_imgs, conditions,
 
 def generator_loss(netsD, image_encoder, fake_imgs, real_labels,
                    words_embs, sent_emb, match_labels,
-                   cap_lens, class_ids):
+                   cap_lens, class_ids, rank):
     numDs = len(netsD)
     batch_size = real_labels.size(0)
     logs = ''
@@ -190,7 +190,7 @@ def generator_loss(netsD, image_encoder, fake_imgs, real_labels,
             region_features, cnn_code = image_encoder(fake_imgs[i])
             w_loss0, w_loss1, _ = words_loss(region_features, words_embs,
                                              match_labels, cap_lens,
-                                             class_ids, batch_size)
+                                             class_ids, batch_size, rank)
             w_loss = (w_loss0 + w_loss1) * \
                 cfg.TRAIN.SMOOTH.LAMBDA
             # err_words = err_words + w_loss.data[0]

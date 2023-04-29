@@ -6,6 +6,8 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.autograd import Variable
 import torch.backends.cudnn as cudnn
+from torch.nn.parallel import DistributedDataParallel
+import torch.distributed as dist
 
 from PIL import Image
 
@@ -27,7 +29,7 @@ import sys
 
 # ################# Text to image task############################ #
 class condGANTrainer(object):
-    def __init__(self, output_dir, data_loader, n_words, ixtoword):
+    def __init__(self, output_dir, data_loader, n_words, ixtoword, rank):
         if cfg.TRAIN.FLAG:
             self.model_dir = os.path.join(output_dir, 'Model')
             self.image_dir = os.path.join(output_dir, 'Image')
@@ -37,6 +39,7 @@ class condGANTrainer(object):
         # torch.cuda.set_device(cfg.GPU_ID)
         cudnn.benchmark = True
 
+        self.rank = rank
         self.batch_size = cfg.TRAIN.BATCH_SIZE
         self.max_epoch = cfg.TRAIN.MAX_EPOCH
         self.snapshot_interval = cfg.TRAIN.SNAPSHOT_INTERVAL
@@ -127,11 +130,11 @@ class condGANTrainer(object):
                     netsD[i].load_state_dict(state_dict)
         # ########################################################### #
         if cfg.CUDA:
-            text_encoder = nn.DataParallel(text_encoder.cuda()).module
-            image_encoder = nn.DataParallel(image_encoder.cuda()).module
-            netG = nn.DataParallel(netG.cuda()).module
+            text_encoder = DistributedDataParallel(text_encoder.to(self.rank), device_ids=[self.rank], output_device=self.rank, find_unused_parameters=True).module
+            image_encoder = DistributedDataParallel(image_encoder.to(self.rank), device_ids=[self.rank], output_device=self.rank, find_unused_parameters=True).module
+            netG = DistributedDataParallel(netG.to(self.rank), device_ids=[self.rank], output_device=self.rank, find_unused_parameters=True).module
             for i in range(len(netsD)):
-                netsD[i] = nn.DataParallel(netsD[i].cuda()).module
+                netsD[i] = DistributedDataParallel(netsD[i].to(self.rank), device_ids=[self.rank], output_device=self.rank, find_unused_parameters=True).module
         return [text_encoder, image_encoder, netG, netsD, epoch]
 
     def define_optimizers(self, netG, netsD):
@@ -155,9 +158,9 @@ class condGANTrainer(object):
         fake_labels = Variable(torch.FloatTensor(batch_size).fill_(0))
         match_labels = Variable(torch.LongTensor(range(batch_size)))
         if cfg.CUDA:
-            real_labels = real_labels.cuda()
-            fake_labels = fake_labels.cuda()
-            match_labels = match_labels.cuda()
+            real_labels = real_labels.to(self.rank)
+            fake_labels = fake_labels.to(self.rank)
+            match_labels = match_labels.to(self.rank)
 
         return real_labels, fake_labels, match_labels
 
@@ -210,7 +213,7 @@ class condGANTrainer(object):
         _, _, att_maps = words_loss(region_features.detach(),
                                     words_embs.detach(),
                                     None, cap_lens,
-                                    None, self.batch_size)
+                                    None, self.batch_size, self.rank)
         img_set, _ = \
             build_super_images(fake_imgs[i].detach().cpu(),
                                captions, self.ixtoword, att_maps, att_sze)
@@ -231,16 +234,14 @@ class condGANTrainer(object):
         noise = Variable(torch.FloatTensor(batch_size, nz))
         fixed_noise = Variable(torch.FloatTensor(batch_size, nz).normal_(0, 1))
         if cfg.CUDA:
-            noise, fixed_noise = noise.cuda(), fixed_noise.cuda()
+            noise, fixed_noise = noise.to(self.rank), fixed_noise.to(self.rank)
 
         gen_iterations = 0
         # gen_iterations = start_epoch * self.num_batches
         for epoch in range(start_epoch, self.max_epoch):
             start_t = time.time()
-
-            data_iter = iter(self.data_loader)
-            step = 0
-            while step < self.num_batches:
+            self.dataloader.sampler.set_epoch(epoch)
+            for step, data in enumerate(self.data_loader, 0):
                 # reset requires_grad to be trainable for all Ds
                 # self.set_requires_grad_value(netsD, True)
 
@@ -248,8 +249,8 @@ class condGANTrainer(object):
                 # (1) Prepare training data and Compute text embeddings
                 ######################################################
                 # data = data_iter.next()
-                data = next(data_iter)
-                imgs, captions, cap_lens, class_ids, keys = prepare_data(data)
+                
+                imgs, captions, cap_lens, class_ids, keys = prepare_data(data, self.rank)
 
                 hidden = text_encoder.init_hidden(batch_size)
                 # words_embs: batch_size x nef x seq_len
@@ -294,7 +295,7 @@ class condGANTrainer(object):
                 netG.zero_grad()
                 errG_total, G_logs = \
                     generator_loss(netsD, image_encoder, fake_imgs, real_labels,
-                                   words_embs, sent_emb, match_labels, cap_lens, class_ids)
+                                   words_embs, sent_emb, match_labels, cap_lens, class_ids, self.rank)
                 kl_loss = KL_loss(mu, logvar)
                 errG_total += kl_loss
                 G_logs += 'kl_loss: %.2f ' % kl_loss.data
@@ -371,7 +372,7 @@ class condGANTrainer(object):
             else:
                 netG = G_NET()
             netG.apply(weights_init)
-            netG.cuda()
+            netG.to(self.rank)
             netG.eval()
             #
             text_encoder = RNN_ENCODER(self.n_words, nhidden=cfg.TEXT.EMBEDDING_DIM)
@@ -379,13 +380,13 @@ class condGANTrainer(object):
                 torch.load(cfg.TRAIN.NET_E, map_location=lambda storage, loc: storage)
             text_encoder.load_state_dict(state_dict)
             print('Load text encoder from:', cfg.TRAIN.NET_E)
-            text_encoder = text_encoder.cuda()
+            text_encoder = text_encoder.to(self.rank)
             text_encoder.eval()
 
             batch_size = self.batch_size
             nz = cfg.GAN.Z_DIM
             noise = Variable(torch.FloatTensor(batch_size, nz), volatile=True)
-            noise = noise.cuda()
+            noise = noise.to(self.rank)
 
             model_dir = cfg.TRAIN.NET_G
             state_dict = \
@@ -409,7 +410,7 @@ class condGANTrainer(object):
                     # if step > 50:
                     #     break
 
-                    imgs, captions, cap_lens, class_ids, keys = prepare_data(data)
+                    imgs, captions, cap_lens, class_ids, keys = prepare_data(data, self.rank)
 
                     hidden = text_encoder.init_hidden(batch_size)
                     # words_embs: batch_size x nef x seq_len
@@ -454,7 +455,7 @@ class condGANTrainer(object):
                 torch.load(cfg.TRAIN.NET_E, map_location=lambda storage, loc: storage)
             text_encoder.load_state_dict(state_dict)
             print('Load text encoder from:', cfg.TRAIN.NET_E)
-            text_encoder = text_encoder.cuda()
+            text_encoder = text_encoder.to(self.rank)
             text_encoder.eval()
 
             # the path to save generated images
@@ -468,7 +469,7 @@ class condGANTrainer(object):
                 torch.load(model_dir, map_location=lambda storage, loc: storage)
             netG.load_state_dict(state_dict)
             print('Load G from: ', model_dir)
-            netG.cuda()
+            netG.to(self.rank)
             netG.eval()
             for key in data_dic:
                 save_dir = '%s/%s' % (s_tmp, key)
@@ -480,11 +481,11 @@ class condGANTrainer(object):
                 captions = Variable(torch.from_numpy(captions), volatile=True)
                 cap_lens = Variable(torch.from_numpy(cap_lens), volatile=True)
 
-                captions = captions.cuda()
-                cap_lens = cap_lens.cuda()
+                captions = captions.to(self.rank)
+                cap_lens = cap_lens.to(self.rank)
                 for i in range(1):  # 16
                     noise = Variable(torch.FloatTensor(batch_size, nz), volatile=True)
-                    noise = noise.cuda()
+                    noise = noise.to(self.rank)
                     #######################################################
                     # (1) Extract text embeddings
                     ######################################################
