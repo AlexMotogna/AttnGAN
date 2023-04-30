@@ -54,7 +54,7 @@ def parse_args():
 
 
 def train(dataloader, cnn_model, rnn_model, batch_size,
-          labels, optimizer, epoch, ixtoword, image_dir, gpuId):
+          labels, optimizer, epoch, ixtoword, image_dir, gpuId, cfg):
     cnn_model.train()
     rnn_model.train()
     s_total_loss0 = 0
@@ -69,7 +69,7 @@ def train(dataloader, cnn_model, rnn_model, batch_size,
         cnn_model.zero_grad()
 
         imgs, captions, cap_lens, \
-            class_ids, keys = prepare_data(data, gpuId)
+            class_ids, keys = prepare_data(data, gpuId, cfg)
 
 
         # words_features: batch_size x nef x 17 x 17
@@ -85,13 +85,13 @@ def train(dataloader, cnn_model, rnn_model, batch_size,
         words_emb, sent_emb = rnn_model(captions, cap_lens, hidden)
 
         w_loss0, w_loss1, attn_maps = words_loss(words_features, words_emb, labels,
-                                                 cap_lens, class_ids, batch_size, gpuId)
+                                                 cap_lens, class_ids, batch_size, gpuId, cfg)
         w_total_loss0 += w_loss0.data
         w_total_loss1 += w_loss1.data
         loss = w_loss0 + w_loss1
 
         s_loss0, s_loss1 = \
-            sent_loss(sent_code, sent_emb, labels, class_ids, batch_size, gpuId)
+            sent_loss(sent_code, sent_emb, labels, class_ids, batch_size, gpuId, cfg)
         loss += s_loss0 + s_loss1
         s_total_loss0 += s_loss0.data
         s_total_loss1 += s_loss1.data
@@ -129,7 +129,7 @@ def train(dataloader, cnn_model, rnn_model, batch_size,
             # attention Maps
             img_set, _ = \
                 build_super_images(imgs[-1].cpu(), captions,
-                                   ixtoword, attn_maps, att_sze)
+                                   ixtoword, attn_maps, att_sze, cfg.TRAIN.BATCH_SIZE, cfg.TEXT.WORDS_NUM)
             if img_set is not None:
                 im = Image.fromarray(img_set)
                 fullpath = '%s/attention_maps%d.png' % (image_dir, step)
@@ -137,14 +137,14 @@ def train(dataloader, cnn_model, rnn_model, batch_size,
     return count
 
 
-def evaluate(dataloader, cnn_model, rnn_model, batch_size, labels, gpuId):
+def evaluate(dataloader, cnn_model, rnn_model, batch_size, labels, gpuId, cfg):
     cnn_model.eval()
     rnn_model.eval()
     s_total_loss = 0
     w_total_loss = 0
     for step, data in enumerate(dataloader, 0):
         real_imgs, captions, cap_lens, \
-                class_ids, keys = prepare_data(data, gpuId)
+                class_ids, keys = prepare_data(data, gpuId, cfg)
 
         words_features, sent_code = cnn_model(real_imgs[-1])
         # nef = words_features.size(1)
@@ -154,11 +154,11 @@ def evaluate(dataloader, cnn_model, rnn_model, batch_size, labels, gpuId):
         words_emb, sent_emb = rnn_model(captions, cap_lens, hidden)
 
         w_loss0, w_loss1, attn = words_loss(words_features, words_emb, labels,
-                                            cap_lens, class_ids, batch_size, gpuId)
+                                            cap_lens, class_ids, batch_size, gpuId, cfg)
         w_total_loss += (w_loss0 + w_loss1).data
 
         s_loss0, s_loss1 = \
-            sent_loss(sent_code, sent_emb, labels, class_ids, batch_size, gpuId)
+            sent_loss(sent_code, sent_emb, labels, class_ids, batch_size, gpuId, cfg)
         s_total_loss += (s_loss0 + s_loss1).data
 
         if step == 50:
@@ -170,10 +170,10 @@ def evaluate(dataloader, cnn_model, rnn_model, batch_size, labels, gpuId):
     return s_cur_loss, w_cur_loss
 
 
-def build_models(dataset, batch_size, gpuId):
+def build_models(dataset, batch_size, gpuId, cfg):
     # build model ############################################################
-    text_encoder = RNN_ENCODER(dataset.n_words, nhidden=cfg.TEXT.EMBEDDING_DIM)
-    image_encoder = CNN_ENCODER(cfg.TEXT.EMBEDDING_DIM)
+    text_encoder = RNN_ENCODER(cfg, dataset.n_words, nhidden=cfg.TEXT.EMBEDDING_DIM)
+    image_encoder = CNN_ENCODER(cfg, cfg.TEXT.EMBEDDING_DIM)
     labels = Variable(torch.LongTensor(range(batch_size)))
     start_epoch = 0
     if cfg.TRAIN.NET_E != '':
@@ -221,7 +221,7 @@ def run(rank, world_size, log_filename, cfg, model_dir, image_dir):
         transforms.Resize(int(imsize * 76 / 64)),
         transforms.RandomCrop(imsize),
         transforms.RandomHorizontalFlip()])
-    dataset = TextDataset(cfg.DATA_DIR, 'train',
+    dataset = TextDataset(cfg.DATA_DIR, 'train', cfg,
                           base_size=cfg.TREE.BASE_SIZE,
                           transform=image_transform)
     
@@ -234,7 +234,7 @@ def run(rank, world_size, log_filename, cfg, model_dir, image_dir):
         shuffle=False, num_workers=0, sampler=sampler)
 
     # # validation data #
-    dataset_val = TextDataset(cfg.DATA_DIR, 'test',
+    dataset_val = TextDataset(cfg.DATA_DIR, 'test', cfg,
                               base_size=cfg.TREE.BASE_SIZE,
                               transform=image_transform)
     
@@ -245,7 +245,7 @@ def run(rank, world_size, log_filename, cfg, model_dir, image_dir):
         shuffle=False, num_workers=0, sampler=sampler_val)
 
     # Train ##############################################################
-    text_encoder, image_encoder, labels, start_epoch = build_models(dataset, batch_size, gpuId)
+    text_encoder, image_encoder, labels, start_epoch = build_models(dataset, batch_size, gpuId, cfg)
     para = list(text_encoder.parameters())
     for v in image_encoder.parameters():
         if v.requires_grad:
@@ -263,14 +263,14 @@ def run(rank, world_size, log_filename, cfg, model_dir, image_dir):
             epoch_start_time = time.time()
             count = train(dataloader, image_encoder, text_encoder,
                           batch_size, labels, optimizer, epoch,
-                          dataset.ixtoword, image_dir, gpuId)
+                          dataset.ixtoword, image_dir, gpuId, cfg)
             
             dist.barrier()
 
             print('-' * 89)
             if len(dataloader_val) > 0:
                 s_loss, w_loss = evaluate(dataloader_val, image_encoder,
-                                          text_encoder, batch_size, labels, gpuId)
+                                          text_encoder, batch_size, labels, gpuId, cfg)
                 end_t = time.time()
                 print('Rank : {:3d}| end epoch {:3d} | valid loss '
                       '{:5.2f} {:5.2f} | lr {:.5f}| time {:5.5f} s |'

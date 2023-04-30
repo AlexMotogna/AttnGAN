@@ -6,7 +6,7 @@ from __future__ import unicode_literals
 
 from nltk.tokenize import RegexpTokenizer
 from collections import defaultdict
-from miscc.config import cfg
+# from miscc.config import cfg
 
 import torch
 import torch.utils.data as data
@@ -25,7 +25,7 @@ else:
     import pickle
 
 
-def prepare_data(data, gpuId):
+def prepare_data(data, gpuId, cfg):
     imgs, captions, captions_lens, class_ids, keys = data
 
     # sort data by the length in a decreasing order
@@ -56,7 +56,7 @@ def prepare_data(data, gpuId):
             class_ids, keys]
 
 
-def get_imgs(img_path, imsize, bbox=None,
+def get_imgs(img_path, imsize, cfg, bbox=None,
              transform=None, normalize=None):
     img = Image.open(img_path).convert('RGB')
     width, height = img.size
@@ -89,19 +89,20 @@ def get_imgs(img_path, imsize, bbox=None,
 
 
 class TextDataset(data.Dataset):
-    def __init__(self, data_dir, split='train',
+    def __init__(self, data_dir, cfg, split='train',
                  base_size=64,
                  transform=None, target_transform=None):
+        self.cfg = cfg
         self.transform = transform
         self.split = split
         self.norm = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
         self.target_transform = target_transform
-        self.embeddings_num = cfg.TEXT.CAPTIONS_PER_IMAGE
+        self.embeddings_num = self.cfg.TEXT.CAPTIONS_PER_IMAGE
 
         self.imsize = []
-        for i in range(cfg.TREE.BRANCH_NUM):
+        for i in range(self.cfg.TREE.BRANCH_NUM):
             self.imsize.append(base_size)
             base_size = base_size * 2
 
@@ -258,17 +259,17 @@ class TextDataset(data.Dataset):
             print('ERROR: do not need END (0) token', sent_caption)
         num_words = len(sent_caption)
         # pad with 0s (i.e., '<end>')
-        x = np.zeros((cfg.TEXT.WORDS_NUM, 1), dtype='int64')
+        x = np.zeros((self.cfg.TEXT.WORDS_NUM, 1), dtype='int64')
         x_len = num_words
-        if num_words <= cfg.TEXT.WORDS_NUM:
+        if num_words <= self.cfg.TEXT.WORDS_NUM:
             x[:num_words, 0] = sent_caption
         else:
             ix = list(np.arange(num_words))  # 1, 2, 3,..., maxNum
             np.random.shuffle(ix)
-            ix = ix[:cfg.TEXT.WORDS_NUM]
+            ix = ix[:self.cfg.TEXT.WORDS_NUM]
             ix = np.sort(ix)
             x[:, 0] = sent_caption[ix]
-            x_len = cfg.TEXT.WORDS_NUM
+            x_len = self.cfg.TEXT.WORDS_NUM
         return x, x_len
 
     def __getitem__(self, index):
@@ -280,7 +281,7 @@ class TextDataset(data.Dataset):
         data_dir = self.data_dir
         #
         img_name = '%s/images/%s.jpg' % (data_dir, key)
-        imgs = get_imgs(img_name, self.imsize,
+        imgs = get_imgs(img_name, self.imsize, self.cfg,
                         bbox, self.transform, normalize=self.norm)
         # random select a sentence
 

@@ -8,7 +8,7 @@ import torch.nn.functional as F
 
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
-from miscc.config import cfg
+# from miscc.config import cfg
 from GlobalAttention import GlobalAttentionGeneral as ATT_NET
 
 
@@ -73,16 +73,17 @@ class ResBlock(nn.Module):
 
 # ############## Text2Image Encoder-Decoder #######
 class RNN_ENCODER(nn.Module):
-    def __init__(self, ntoken, ninput=300, drop_prob=0.5,
+    def __init__(self, cfg, ntoken, ninput=300, drop_prob=0.5,
                  nhidden=128, nlayers=1, bidirectional=True):
         super(RNN_ENCODER, self).__init__()
-        self.n_steps = cfg.TEXT.WORDS_NUM
+        self.cfg = cfg
+        self.n_steps = self.cfg.TEXT.WORDS_NUM
         self.ntoken = ntoken  # size of the dictionary
         self.ninput = ninput  # size of each embedding vector
         self.drop_prob = drop_prob  # probability of an element to be zeroed
         self.nlayers = nlayers  # Number of recurrent layers
         self.bidirectional = bidirectional
-        self.rnn_type = cfg.RNN_TYPE
+        self.rnn_type = self.cfg.RNN_TYPE
         if bidirectional:
             self.num_directions = 2
         else:
@@ -160,9 +161,10 @@ class RNN_ENCODER(nn.Module):
 
 
 class CNN_ENCODER(nn.Module):
-    def __init__(self, nef):
+    def __init__(self, cfg, nef):
         super(CNN_ENCODER, self).__init__()
-        if cfg.TRAIN.FLAG:
+        self.cfg = cfg
+        if self.cfg.TRAIN.FLAG:
             self.nef = nef
         else:
             self.nef = 256  # define a uniform ranker
@@ -271,10 +273,11 @@ class CNN_ENCODER(nn.Module):
 class CA_NET(nn.Module):
     # some code is modified from vae examples
     # (https://github.com/pytorch/examples/blob/master/vae/main.py)
-    def __init__(self):
+    def __init__(self, cfg):
         super(CA_NET, self).__init__()
-        self.t_dim = cfg.TEXT.EMBEDDING_DIM
-        self.c_dim = cfg.GAN.CONDITION_DIM
+        self.cfg = cfg
+        self.t_dim = self.cfg.TEXT.EMBEDDING_DIM
+        self.c_dim = self.cfg.GAN.CONDITION_DIM
         self.fc = nn.Linear(self.t_dim, self.c_dim * 4, bias=True)
         self.relu = GLU()
 
@@ -286,7 +289,7 @@ class CA_NET(nn.Module):
 
     def reparametrize(self, mu, logvar):
         std = logvar.mul(0.5).exp_()
-        if cfg.CUDA:
+        if self.cfg.CUDA:
             eps = torch.cuda.FloatTensor(std.size()).normal_()
         else:
             eps = torch.FloatTensor(std.size()).normal_()
@@ -300,10 +303,11 @@ class CA_NET(nn.Module):
 
 
 class INIT_STAGE_G(nn.Module):
-    def __init__(self, ngf, ncf):
+    def __init__(self, cfg, ngf, ncf):
         super(INIT_STAGE_G, self).__init__()
+        self.cfg = cfg
         self.gf_dim = ngf
-        self.in_dim = cfg.GAN.Z_DIM + ncf  # cfg.TEXT.EMBEDDING_DIM
+        self.in_dim = self.cfg.GAN.Z_DIM + ncf  # self.cfg.TEXT.EMBEDDING_DIM
 
         self.define_module()
 
@@ -342,17 +346,18 @@ class INIT_STAGE_G(nn.Module):
 
 
 class NEXT_STAGE_G(nn.Module):
-    def __init__(self, ngf, nef, ncf):
+    def __init__(self, cfg, ngf, nef, ncf):
         super(NEXT_STAGE_G, self).__init__()
+        self.cfg = cfg
         self.gf_dim = ngf
         self.ef_dim = nef
         self.cf_dim = ncf
-        self.num_residual = cfg.GAN.R_NUM
+        self.num_residual = self.cfg.GAN.R_NUM
         self.define_module()
 
     def _make_layer(self, block, channel_num):
         layers = []
-        for i in range(cfg.GAN.R_NUM):
+        for i in range(self.cfg.GAN.R_NUM):
             layers.append(block(channel_num))
         return nn.Sequential(*layers)
 
@@ -395,22 +400,23 @@ class GET_IMAGE_G(nn.Module):
 
 
 class G_NET(nn.Module):
-    def __init__(self):
+    def __init__(self, cfg):
         super(G_NET, self).__init__()
-        ngf = cfg.GAN.GF_DIM
-        nef = cfg.TEXT.EMBEDDING_DIM
-        ncf = cfg.GAN.CONDITION_DIM
-        self.ca_net = CA_NET()
+        self.cfg = cfg
+        ngf = self.cfg.GAN.GF_DIM
+        nef = self.cfg.TEXT.EMBEDDING_DIM
+        ncf = self.cfg.GAN.CONDITION_DIM
+        self.ca_net = CA_NET(cfg)
 
-        if cfg.TREE.BRANCH_NUM > 0:
-            self.h_net1 = INIT_STAGE_G(ngf * 16, ncf)
+        if self.cfg.TREE.BRANCH_NUM > 0:
+            self.h_net1 = INIT_STAGE_G(self.cfg, ngf * 16, ncf)
             self.img_net1 = GET_IMAGE_G(ngf)
         # gf x 64 x 64
-        if cfg.TREE.BRANCH_NUM > 1:
-            self.h_net2 = NEXT_STAGE_G(ngf, nef, ncf)
+        if self.cfg.TREE.BRANCH_NUM > 1:
+            self.h_net2 = NEXT_STAGE_G(self.cfg, ngf, nef, ncf)
             self.img_net2 = GET_IMAGE_G(ngf)
-        if cfg.TREE.BRANCH_NUM > 2:
-            self.h_net3 = NEXT_STAGE_G(ngf, nef, ncf)
+        if self.cfg.TREE.BRANCH_NUM > 2:
+            self.h_net3 = NEXT_STAGE_G(self.cfg, ngf, nef, ncf)
             self.img_net3 = GET_IMAGE_G(ngf)
 
     def forward(self, z_code, sent_emb, word_embs, mask):
@@ -425,18 +431,18 @@ class G_NET(nn.Module):
         att_maps = []
         c_code, mu, logvar = self.ca_net(sent_emb)
 
-        if cfg.TREE.BRANCH_NUM > 0:
+        if self.cfg.TREE.BRANCH_NUM > 0:
             h_code1 = self.h_net1(z_code, c_code)
             fake_img1 = self.img_net1(h_code1)
             fake_imgs.append(fake_img1)
-        if cfg.TREE.BRANCH_NUM > 1:
+        if self.cfg.TREE.BRANCH_NUM > 1:
             h_code2, att1 = \
                 self.h_net2(h_code1, c_code, word_embs, mask)
             fake_img2 = self.img_net2(h_code2)
             fake_imgs.append(fake_img2)
             if att1 is not None:
                 att_maps.append(att1)
-        if cfg.TREE.BRANCH_NUM > 2:
+        if self.cfg.TREE.BRANCH_NUM > 2:
             h_code3, att2 = \
                 self.h_net3(h_code2, c_code, word_embs, mask)
             fake_img3 = self.img_net3(h_code3)
@@ -449,21 +455,22 @@ class G_NET(nn.Module):
 
 
 class G_DCGAN(nn.Module):
-    def __init__(self):
+    def __init__(self, cfg):
         super(G_DCGAN, self).__init__()
-        ngf = cfg.GAN.GF_DIM
-        nef = cfg.TEXT.EMBEDDING_DIM
-        ncf = cfg.GAN.CONDITION_DIM
-        self.ca_net = CA_NET()
+        self.cfg = cfg
+        ngf = self.cfg.GAN.GF_DIM
+        nef = self.cfg.TEXT.EMBEDDING_DIM
+        ncf = self.cfg.GAN.CONDITION_DIM
+        self.ca_net = CA_NET(self.cfg)
 
         # 16gf x 64 x 64 --> gf x 64 x 64 --> 3 x 64 x 64
-        if cfg.TREE.BRANCH_NUM > 0:
-            self.h_net1 = INIT_STAGE_G(ngf * 16, ncf)
+        if self.cfg.TREE.BRANCH_NUM > 0:
+            self.h_net1 = INIT_STAGE_G(self.cfg, ngf * 16, ncf)
         # gf x 64 x 64
-        if cfg.TREE.BRANCH_NUM > 1:
-            self.h_net2 = NEXT_STAGE_G(ngf, nef, ncf)
-        if cfg.TREE.BRANCH_NUM > 2:
-            self.h_net3 = NEXT_STAGE_G(ngf, nef, ncf)
+        if self.cfg.TREE.BRANCH_NUM > 1:
+            self.h_net2 = NEXT_STAGE_G(self.cfg, ngf, nef, ncf)
+        if self.cfg.TREE.BRANCH_NUM > 2:
+            self.h_net3 = NEXT_STAGE_G(self.cfg, ngf, nef, ncf)
         self.img_net = GET_IMAGE_G(ngf)
 
     def forward(self, z_code, sent_emb, word_embs, mask):
@@ -476,13 +483,13 @@ class G_DCGAN(nn.Module):
         """
         att_maps = []
         c_code, mu, logvar = self.ca_net(sent_emb)
-        if cfg.TREE.BRANCH_NUM > 0:
+        if self.cfg.TREE.BRANCH_NUM > 0:
             h_code = self.h_net1(z_code, c_code)
-        if cfg.TREE.BRANCH_NUM > 1:
+        if self.cfg.TREE.BRANCH_NUM > 1:
             h_code, att1 = self.h_net2(h_code, c_code, word_embs, mask)
             if att1 is not None:
                 att_maps.append(att1)
-        if cfg.TREE.BRANCH_NUM > 2:
+        if self.cfg.TREE.BRANCH_NUM > 2:
             h_code, att2 = self.h_net3(h_code, c_code, word_embs, mask)
             if att2 is not None:
                 att_maps.append(att2)
@@ -564,10 +571,11 @@ class D_GET_LOGITS(nn.Module):
 
 # For 64 x 64 images
 class D_NET64(nn.Module):
-    def __init__(self, b_jcu=True):
+    def __init__(self, cfg, b_jcu=True):
         super(D_NET64, self).__init__()
-        ndf = cfg.GAN.DF_DIM
-        nef = cfg.TEXT.EMBEDDING_DIM
+        self.cfg = cfg
+        ndf = self.cfg.GAN.DF_DIM
+        nef = self.cfg.TEXT.EMBEDDING_DIM
         self.img_code_s16 = encode_image_by_16times(ndf)
         if b_jcu:
             self.UNCOND_DNET = D_GET_LOGITS(ndf, nef, bcondition=False)
@@ -582,10 +590,11 @@ class D_NET64(nn.Module):
 
 # For 128 x 128 images
 class D_NET128(nn.Module):
-    def __init__(self, b_jcu=True):
+    def __init__(self, cfg, b_jcu=True):
         super(D_NET128, self).__init__()
-        ndf = cfg.GAN.DF_DIM
-        nef = cfg.TEXT.EMBEDDING_DIM
+        self.cfg = cfg
+        ndf = self.cfg.GAN.DF_DIM
+        nef = self.cfg.TEXT.EMBEDDING_DIM
         self.img_code_s16 = encode_image_by_16times(ndf)
         self.img_code_s32 = downBlock(ndf * 8, ndf * 16)
         self.img_code_s32_1 = Block3x3_leakRelu(ndf * 16, ndf * 8)
@@ -605,10 +614,11 @@ class D_NET128(nn.Module):
 
 # For 256 x 256 images
 class D_NET256(nn.Module):
-    def __init__(self, b_jcu=True):
+    def __init__(self, cfg, b_jcu=True):
         super(D_NET256, self).__init__()
-        ndf = cfg.GAN.DF_DIM
-        nef = cfg.TEXT.EMBEDDING_DIM
+        self.cfg = cfg
+        ndf = self.cfg.GAN.DF_DIM
+        nef = self.cfg.TEXT.EMBEDDING_DIM
         self.img_code_s16 = encode_image_by_16times(ndf)
         self.img_code_s32 = downBlock(ndf * 8, ndf * 16)
         self.img_code_s64 = downBlock(ndf * 16, ndf * 32)

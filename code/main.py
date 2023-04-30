@@ -18,7 +18,6 @@ import torch
 import torchvision.transforms as transforms
 import torch.distributed as dist
 from torch.utils.data.distributed import DistributedSampler
-from torch.nn.parallel import DistributedDataParallel
 import torch.multiprocessing as mp
 
 import warnings
@@ -40,7 +39,7 @@ def parse_args():
     return args
 
 
-def gen_example(wordtoix, algo):
+def gen_example(wordtoix, algo, cfg):
     '''generate images from example sentences'''
     from nltk.tokenize import RegexpTokenizer
     filepath = '%s/example_filenames.txt' % (cfg.DATA_DIR)
@@ -111,7 +110,7 @@ def run(rank, world_size, cfg, output_dir):
         transforms.Resize(int(imsize * 76 / 64)),
         transforms.RandomCrop(imsize),
         transforms.RandomHorizontalFlip()])
-    dataset = TextDataset(cfg.DATA_DIR, split_dir,
+    dataset = TextDataset(cfg.DATA_DIR, split_dir, cfg,
                           base_size=cfg.TREE.BASE_SIZE,
                           transform=image_transform)
     assert dataset
@@ -123,7 +122,7 @@ def run(rank, world_size, cfg, output_dir):
         drop_last=True, shuffle=bshuffle, num_workers=0, sampler=sampler)
     
     # Define models and go to train/evaluate
-    algo = trainer(output_dir, dataloader, dataset.n_words, dataset.ixtoword, rank)
+    algo = trainer(output_dir, dataloader, dataset.n_words, dataset.ixtoword, rank, cfg)
 
     start_t = time.time()
     if cfg.TRAIN.FLAG:
@@ -133,7 +132,7 @@ def run(rank, world_size, cfg, output_dir):
         if cfg.B_VALIDATION:
             algo.sampling(split_dir)  # generate images for the whole valid dataset
         else:
-            gen_example(dataset.wordtoix, algo)  # generate images for customized captions
+            gen_example(dataset.wordtoix, algo, cfg)  # generate images for customized captions
     end_t = time.time()
     print('Total time for training:', end_t - start_t)
     cleanup()
