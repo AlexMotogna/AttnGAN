@@ -130,8 +130,8 @@ class condGANTrainer(object):
                     netsD[i].load_state_dict(state_dict)
         # ########################################################### #
         if cfg.CUDA:
-            text_encoder = DistributedDataParallel(text_encoder.to(self.rank), device_ids=[self.rank], output_device=self.rank, find_unused_parameters=True).module
-            image_encoder = DistributedDataParallel(image_encoder.to(self.rank), device_ids=[self.rank], output_device=self.rank, find_unused_parameters=True).module
+            text_encoder = text_encoder.to(self.rank)
+            image_encoder = image_encoder.to(self.rank)
             netG = DistributedDataParallel(netG.to(self.rank), device_ids=[self.rank], output_device=self.rank, find_unused_parameters=True).module
             for i in range(len(netsD)):
                 netsD[i] = DistributedDataParallel(netsD[i].to(self.rank), device_ids=[self.rank], output_device=self.rank, find_unused_parameters=True).module
@@ -240,7 +240,7 @@ class condGANTrainer(object):
         # gen_iterations = start_epoch * self.num_batches
         for epoch in range(start_epoch, self.max_epoch):
             start_t = time.time()
-            self.dataloader.sampler.set_epoch(epoch)
+            self.data_loader.sampler.set_epoch(epoch)
             for step, data in enumerate(self.data_loader, 0):
                 # reset requires_grad to be trainable for all Ds
                 # self.set_requires_grad_value(netsD, True)

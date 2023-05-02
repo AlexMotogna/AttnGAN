@@ -120,7 +120,7 @@ def run(rank, world_size, cfg, output_dir):
 
     dataloader = torch.utils.data.DataLoader(
         dataset, batch_size=cfg.TRAIN.BATCH_SIZE,
-        drop_last=True, shuffle=bshuffle, num_workers=0, sampler=sampler)
+        drop_last=True, num_workers=0, sampler=sampler)
     
     # Define models and go to train/evaluate
     algo = trainer(output_dir, dataloader, dataset.n_words, dataset.ixtoword, rank)
