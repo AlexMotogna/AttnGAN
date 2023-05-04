@@ -30,11 +30,15 @@ import sys
 # ################# Text to image task############################ #
 class condGANTrainer(object):
     def __init__(self, output_dir, data_loader, n_words, ixtoword, rank):
+        self.log_filename = output_dir + "/log.txt"
         if cfg.TRAIN.FLAG:
             self.model_dir = os.path.join(output_dir, 'Model')
             self.image_dir = os.path.join(output_dir, 'Image')
             mkdir_p(self.model_dir)
             mkdir_p(self.image_dir)
+            if not os.path.isfile(self.log_filename):
+                f = open(self.log_filename, "x")
+                f.close()
 
         # torch.cuda.set_device(cfg.GPU_ID)
         cudnn.benchmark = True
@@ -49,9 +53,6 @@ class condGANTrainer(object):
         self.data_loader = data_loader
         self.num_batches = len(self.data_loader)
 
-        self.log_filename = output_dir + "/log.txt"
-        f = open(self.log_filename, "x")
-        f.close()
 
     def build_models(self):
         # ###################encoders######################################## #
@@ -84,17 +85,17 @@ class condGANTrainer(object):
         netsD = []
         if cfg.GAN.B_DCGAN:
             if cfg.TREE.BRANCH_NUM ==1:
-                netG = G_DCGAN()
+                netG = G_DCGAN(self.rank)
                 netsD = [D_NET64(b_jcu=False)]
             elif cfg.TREE.BRANCH_NUM == 2:
-                netG = G_DCGAN()
+                netG = G_DCGAN(self.rank)
                 netsD = [D_NET128(b_jcu=False)]
             else:  # cfg.TREE.BRANCH_NUM == 3:
-                netG = G_DCGAN()
+                netG = G_DCGAN(self.rank)
                 netsD = [D_NET256(b_jcu=False)]
             # TODO: elif cfg.TREE.BRANCH_NUM > 3:
         else:
-            netG = G_NET()
+            netG = G_NET(self.rank)
             if cfg.TREE.BRANCH_NUM > 0:
                 netsD.append(D_NET64())
             if cfg.TREE.BRANCH_NUM > 1:
@@ -238,7 +239,7 @@ class condGANTrainer(object):
 
         gen_iterations = 0
         # gen_iterations = start_epoch * self.num_batches
-        for epoch in range(start_epoch, self.max_epoch):
+        for epoch in range(start_epoch, self.max_epoch + 1):
             start_t = time.time()
             self.data_loader.sampler.set_epoch(epoch)
             for step, data in enumerate(self.data_loader, 0):
@@ -368,9 +369,9 @@ class condGANTrainer(object):
                 split_dir = 'valid'
             # Build and load the generator
             if cfg.GAN.B_DCGAN:
-                netG = G_DCGAN()
+                netG = G_DCGAN(self.rank)
             else:
-                netG = G_NET()
+                netG = G_NET(self.rank)
             netG.apply(weights_init)
             netG.to(self.rank)
             netG.eval()
@@ -460,9 +461,9 @@ class condGANTrainer(object):
 
             # the path to save generated images
             if cfg.GAN.B_DCGAN:
-                netG = G_DCGAN()
+                netG = G_DCGAN(self.rank)
             else:
-                netG = G_NET()
+                netG = G_NET(self.rank)
             s_tmp = cfg.TRAIN.NET_G[:cfg.TRAIN.NET_G.rfind('.pth')]
             model_dir = cfg.TRAIN.NET_G
             state_dict = \

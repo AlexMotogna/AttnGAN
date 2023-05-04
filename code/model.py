@@ -271,8 +271,9 @@ class CNN_ENCODER(nn.Module):
 class CA_NET(nn.Module):
     # some code is modified from vae examples
     # (https://github.com/pytorch/examples/blob/master/vae/main.py)
-    def __init__(self):
+    def __init__(self, rank):
         super(CA_NET, self).__init__()
+        self.rank = rank
         self.t_dim = cfg.TEXT.EMBEDDING_DIM
         self.c_dim = cfg.GAN.CONDITION_DIM
         self.fc = nn.Linear(self.t_dim, self.c_dim * 4, bias=True)
@@ -287,7 +288,7 @@ class CA_NET(nn.Module):
     def reparametrize(self, mu, logvar):
         std = logvar.mul(0.5).exp_()
         if cfg.CUDA:
-            eps = torch.cuda.FloatTensor(std.size()).normal_()
+            eps = torch.FloatTensor(std.size()).normal_().to(self.rank)
         else:
             eps = torch.FloatTensor(std.size()).normal_()
         eps = Variable(eps)
@@ -395,12 +396,13 @@ class GET_IMAGE_G(nn.Module):
 
 
 class G_NET(nn.Module):
-    def __init__(self):
+    def __init__(self, rank):
         super(G_NET, self).__init__()
         ngf = cfg.GAN.GF_DIM
         nef = cfg.TEXT.EMBEDDING_DIM
         ncf = cfg.GAN.CONDITION_DIM
-        self.ca_net = CA_NET()
+        self.rank = rank
+        self.ca_net = CA_NET(self.rank)
 
         if cfg.TREE.BRANCH_NUM > 0:
             self.h_net1 = INIT_STAGE_G(ngf * 16, ncf)
@@ -449,12 +451,13 @@ class G_NET(nn.Module):
 
 
 class G_DCGAN(nn.Module):
-    def __init__(self):
+    def __init__(self, rank):
         super(G_DCGAN, self).__init__()
         ngf = cfg.GAN.GF_DIM
         nef = cfg.TEXT.EMBEDDING_DIM
         ncf = cfg.GAN.CONDITION_DIM
-        self.ca_net = CA_NET()
+        self.rank = rank
+        self.ca_net = CA_NET(self.rank)
 
         # 16gf x 64 x 64 --> gf x 64 x 64 --> 3 x 64 x 64
         if cfg.TREE.BRANCH_NUM > 0:

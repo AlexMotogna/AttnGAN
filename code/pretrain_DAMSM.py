@@ -278,7 +278,7 @@ def run(rank, world_size, log_filename, cfg, model_dir, image_dir):
                 
                 f = open(log_filename, "a")
                 f.write('Rank : {:3d}| end epoch {:3d} | valid loss '
-                      '{:5.2f} {:5.2f} | lr {:.5f}| time {:5.5f} s |'
+                      '{:5.2f} {:5.2f} | lr {:.5f}| time {:5.5f} s | \n'
                       .format(rank, epoch, s_loss, w_loss, lr, end_t - epoch_start_time))
                 f.close()
 
