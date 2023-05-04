@@ -196,7 +196,7 @@ def generator_loss(netsD, image_encoder, fake_imgs, real_labels,
             # err_words = err_words + w_loss.data[0]
 
             s_loss0, s_loss1 = sent_loss(cnn_code, sent_emb,
-                                         match_labels, class_ids, batch_size)
+                                         match_labels, class_ids, batch_size, rank)
             s_loss = (s_loss0 + s_loss1) * \
                 cfg.TRAIN.SMOOTH.LAMBDA
             # err_sent = err_sent + s_loss.data[0]

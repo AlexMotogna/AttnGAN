@@ -306,7 +306,7 @@ class condGANTrainer(object):
                 for p, avg_p in zip(netG.parameters(), avg_param_G):
                     avg_p.mul_(0.999).add_(0.001, p.data)
 
-                if gen_iterations % 100 == 0:
+                if gen_iterations % 10000 == 0:
                     print(D_logs + '\n' + G_logs)
                 # save images
                 if gen_iterations % 20000 == 0:
@@ -323,24 +323,27 @@ class condGANTrainer(object):
                     #                       epoch, name='current')
             end_t = time.time()
 
-            print('''[%d/%d][%d]
+            print('''Rank %d: [%d/%d][%d]
                   Loss_D: %.2f Loss_G: %.2f Time: %.2fs'''
-                  % (epoch, self.max_epoch, self.num_batches,
+                  % (self.rank, epoch, self.max_epoch, self.num_batches,
                      errD_total.data, errG_total.data,
                      end_t - start_t))
             
             f = open(self.log_filename, "a")
-            f.write('''[%d/%d][%d]
+            f.write('''Rank %d: [%d/%d][%d]
                   Loss_D: %.2f Loss_G: %.2f Time: %.2fs \n'''
-                  % (epoch, self.max_epoch, self.num_batches,
+                  % (self.rank, epoch, self.max_epoch, self.num_batches,
                      errD_total.data, errG_total.data,
                      end_t - start_t))
             f.close()
 
-            if epoch % cfg.TRAIN.SNAPSHOT_INTERVAL == 0:  # and epoch != 0:
+            dist.barrier()
+
+            if epoch % cfg.TRAIN.SNAPSHOT_INTERVAL == 0 and self.rank == 0:  # and epoch != 0:
                 self.save_model(netG, avg_param_G, netsD, epoch)
 
-        self.save_model(netG, avg_param_G, netsD, self.max_epoch)
+        if self.rank == 0:
+            self.save_model(netG, avg_param_G, netsD, self.max_epoch)
 
     def save_singleimages(self, images, filenames, save_dir,
                           split_dir, sentenceID=0):
