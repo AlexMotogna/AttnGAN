@@ -272,17 +272,22 @@ class condGANTrainer(object):
                 #######################################################
                 # (3) Update D network
                 ######################################################
-                errD_total = 0
-                D_logs = ''
-                for i in range(len(netsD)):
-                    netsD[i].zero_grad()
-                    errD = discriminator_loss(netsD[i], imgs[i], fake_imgs[i],
-                                              sent_emb, real_labels, fake_labels)
-                    # backward and update parameters
-                    errD.backward()
-                    optimizersD[i].step()
-                    errD_total += errD
-                    D_logs += 'errD%d: %.2f ' % (i, errD.data)
+
+                if (epoch & cfg.D_TRAIN_DELAY == 0):
+                    errD_total = 0
+                    D_logs = ''
+                    for i in range(len(netsD)):
+                        netsD[i].zero_grad()
+                        errD = discriminator_loss(netsD[i], imgs[i], fake_imgs[i],
+                                                sent_emb, real_labels, fake_labels)
+                        # backward and update parameters
+                        errD.backward()
+                        optimizersD[i].step()
+                        errD_total += errD
+                        D_logs += 'errD%d: %.2f ' % (i, errD.data)
+                else:
+                    D_logs = ''
+                    errD_total = 0
 
                 #######################################################
                 # (4) Update G network: maximize log(D(G(z)))
