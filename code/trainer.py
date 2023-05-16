@@ -273,7 +273,7 @@ class condGANTrainer(object):
                 # (3) Update D network
                 ######################################################
 
-                if (epoch & cfg.D_TRAIN_DELAY == 0):
+                if (epoch % cfg.TRAIN.D_TRAIN_DELAY == 0):
                     errD_total = 0
                     D_logs = ''
                     for i in range(len(netsD)):
