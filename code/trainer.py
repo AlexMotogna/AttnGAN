@@ -327,26 +327,37 @@ class condGANTrainer(object):
                                           words_embs, mask, image_encoder,
                                           captions, cap_lens, epoch, name='average')
                     load_params(netG, backup_para)
-                    #
-                    # self.save_img_results(netG, fixed_noise, sent_emb,
-                    #                       words_embs, mask, image_encoder,
-                    #                       captions, cap_lens,
-                    #                       epoch, name='current')
+
             end_t = time.time()
 
-            print('''Rank %d: [%d/%d][%d]
-                  Loss_D: %.2f Loss_G: %.2f Time: %.2fs'''
-                  % (self.rank, epoch, self.max_epoch, self.num_batches,
-                     errD_total.data, errG_total.data,
-                     end_t - start_t))
-            
-            f = open(self.log_filename, "a")
-            f.write('''Rank %d: [%d/%d][%d]
-                  Loss_D: %.2f Loss_G: %.2f Time: %.2fs \n'''
-                  % (self.rank, epoch, self.max_epoch, self.num_batches,
-                     errD_total.data, errG_total.data,
-                     end_t - start_t))
-            f.close()
+            if (epoch % cfg.TRAIN.D_TRAIN_DELAY == 0):
+                print('''Rank %d: [%d/%d][%d]
+                    Loss_D: %.2f Loss_G: %.2f Time: %.2fs'''
+                    % (self.rank, epoch, self.max_epoch, self.num_batches,
+                        errD_total.data, errG_total.data,
+                        end_t - start_t))
+                
+                f = open(self.log_filename, "a")
+                f.write('''Rank %d: [%d/%d][%d]
+                    Loss_D: %.2f Loss_G: %.2f Time: %.2fs \n'''
+                    % (self.rank, epoch, self.max_epoch, self.num_batches,
+                        errD_total.data, errG_total.data,
+                        end_t - start_t))
+                f.close()
+            else:
+                print('''Rank %d: [%d/%d][%d]
+                    Loss_G: %.2f Time: %.2fs'''
+                    % (self.rank, epoch, self.max_epoch, self.num_batches,
+                        errG_total.data,
+                        end_t - start_t))
+                
+                f = open(self.log_filename, "a")
+                f.write('''Rank %d: [%d/%d][%d]
+                    Loss_G: %.2f Time: %.2fs \n'''
+                    % (self.rank, epoch, self.max_epoch, self.num_batches,
+                        errG_total.data,
+                        end_t - start_t))
+                f.close()
 
             dist.barrier()
 
