@@ -53,6 +53,8 @@ class condGANTrainer(object):
         self.data_loader = data_loader
         self.num_batches = len(self.data_loader)
 
+        self.g_lr = cfg.TRAIN.GENERATOR_LR
+
 
     def build_models(self):
         # ###################encoders######################################## #
@@ -120,6 +122,10 @@ class condGANTrainer(object):
             iend = cfg.TRAIN.NET_G.rfind('.')
             epoch = cfg.TRAIN.NET_G[istart:iend]
             epoch = int(epoch) + 1
+
+            self.g_lr = self.g_lr * (cfg.TRAIN.GENERATOR_LR ** (int)(epoch / cfg.TRAIN.G_LR_DECAY_INTERVAL))
+            print('G Learning Rate: ', self.g_lr)
+
             if cfg.TRAIN.B_NET_D:
                 Gname = cfg.TRAIN.NET_G
                 for i in range(len(netsD)):
@@ -148,7 +154,7 @@ class condGANTrainer(object):
             optimizersD.append(opt)
 
         optimizerG = optim.Adam(netG.parameters(),
-                                lr=cfg.TRAIN.GENERATOR_LR,
+                                lr=self.g_lr,
                                 betas=(0.5, 0.999))
 
         return optimizerG, optimizersD
@@ -343,6 +349,9 @@ class condGANTrainer(object):
             f.close()
 
             dist.barrier()
+
+            if epoch % cfg.TRAIN.G_LR_DECAY_INTERVAL and epoch != 0:
+                optimizerG, optimizersD = self.define_optimizers(netG, netsD)
 
             if epoch % cfg.TRAIN.SNAPSHOT_INTERVAL == 0 and self.rank == 0:  # and epoch != 0:
                 self.save_model(netG, avg_param_G, netsD, epoch)
