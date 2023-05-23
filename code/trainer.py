@@ -362,6 +362,7 @@ class condGANTrainer(object):
             dist.barrier()
 
             if epoch % cfg.TRAIN.G_LR_DECAY_INTERVAL and epoch != 0:
+                self.g_lr = self.g_lr * cfg.TRAIN.G_LR_DECAY
                 optimizerG, optimizersD = self.define_optimizers(netG, netsD)
 
             if epoch % cfg.TRAIN.SNAPSHOT_INTERVAL == 0 and self.rank == 0:  # and epoch != 0:
