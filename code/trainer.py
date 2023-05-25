@@ -123,7 +123,7 @@ class condGANTrainer(object):
             epoch = cfg.TRAIN.NET_G[istart:iend]
             epoch = int(epoch) + 1
 
-            self.g_lr = self.g_lr * (cfg.TRAIN.GENERATOR_LR ** (int)(epoch / cfg.TRAIN.G_LR_DECAY_INTERVAL))
+            self.g_lr = self.g_lr * (cfg.TRAIN.G_LR_DECAY ** (int)(epoch / cfg.TRAIN.G_LR_DECAY_INTERVAL))
             print('G Learning Rate: ', self.g_lr)
 
             if cfg.TRAIN.B_NET_D:
@@ -361,7 +361,7 @@ class condGANTrainer(object):
 
             dist.barrier()
 
-            if epoch % cfg.TRAIN.G_LR_DECAY_INTERVAL and epoch != 0:
+            if epoch % cfg.TRAIN.G_LR_DECAY_INTERVAL == 0 and epoch != 0:
                 self.g_lr = self.g_lr * cfg.TRAIN.G_LR_DECAY
                 optimizerG, optimizersD = self.define_optimizers(netG, netsD)
 
