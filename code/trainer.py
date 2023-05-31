@@ -88,22 +88,22 @@ class condGANTrainer(object):
         if cfg.GAN.B_DCGAN:
             if cfg.TREE.BRANCH_NUM ==1:
                 netG = G_DCGAN(self.rank)
-                netsD = [D_NET64(b_jcu=False)]
+                netsD = [D_NET64(rank=self.rank, b_jcu=False)]
             elif cfg.TREE.BRANCH_NUM == 2:
                 netG = G_DCGAN(self.rank)
-                netsD = [D_NET128(b_jcu=False)]
+                netsD = [D_NET128(rank=self.rank, b_jcu=False)]
             else:  # cfg.TREE.BRANCH_NUM == 3:
                 netG = G_DCGAN(self.rank)
-                netsD = [D_NET256(b_jcu=False)]
+                netsD = [D_NET256(rank=self.rank, b_jcu=False)]
             # TODO: elif cfg.TREE.BRANCH_NUM > 3:
         else:
             netG = G_NET(self.rank)
             if cfg.TREE.BRANCH_NUM > 0:
-                netsD.append(D_NET64())
+                netsD.append(D_NET64(rank=self.rank))
             if cfg.TREE.BRANCH_NUM > 1:
-                netsD.append(D_NET128())
+                netsD.append(D_NET128(rank=self.rank))
             if cfg.TREE.BRANCH_NUM > 2:
-                netsD.append(D_NET256())
+                netsD.append(D_NET256(rank=self.rank))
             # TODO: if cfg.TREE.BRANCH_NUM > 3:
         netG.apply(weights_init)
         # print(netG)
