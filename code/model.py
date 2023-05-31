@@ -567,8 +567,10 @@ class D_GET_LOGITS(nn.Module):
 
 # For 64 x 64 images
 class D_NET64(nn.Module):
-    def __init__(self, b_jcu=True):
+    def __init__(self, b_jcu=True, std=0.1, gaussNoise=True):
         super(D_NET64, self).__init__()
+        self.std = std
+        self.gaussNoise = gaussNoise
         ndf = cfg.GAN.DF_DIM
         nef = cfg.TEXT.EMBEDDING_DIM
         self.img_code_s16 = encode_image_by_16times(ndf)
@@ -579,14 +581,19 @@ class D_NET64(nn.Module):
         self.COND_DNET = D_GET_LOGITS(ndf, nef, bcondition=True)
 
     def forward(self, x_var):
+        if cfg.TRAIN.FLAG and self.gaussNoise:
+            noise = (torch.randn(x_var.size())) * self.std
+            x_var = x_var + noise
         x_code4 = self.img_code_s16(x_var)  # 4 x 4 x 8df
         return x_code4
 
 
 # For 128 x 128 images
 class D_NET128(nn.Module):
-    def __init__(self, b_jcu=True):
+    def __init__(self, b_jcu=True, std=0.1, gaussNoise=True):
         super(D_NET128, self).__init__()
+        self.std = std
+        self.gaussNoise = gaussNoise
         ndf = cfg.GAN.DF_DIM
         nef = cfg.TEXT.EMBEDDING_DIM
         self.img_code_s16 = encode_image_by_16times(ndf)
@@ -600,6 +607,9 @@ class D_NET128(nn.Module):
         self.COND_DNET = D_GET_LOGITS(ndf, nef, bcondition=True)
 
     def forward(self, x_var):
+        if cfg.TRAIN.FLAG and self.gaussNoise:
+            noise = (torch.randn(x_var.size())) * self.std
+            x_var = x_var + noise
         x_code8 = self.img_code_s16(x_var)   # 8 x 8 x 8df
         x_code4 = self.img_code_s32(x_code8)   # 4 x 4 x 16df
         x_code4 = self.img_code_s32_1(x_code4)  # 4 x 4 x 8df
@@ -608,8 +618,10 @@ class D_NET128(nn.Module):
 
 # For 256 x 256 images
 class D_NET256(nn.Module):
-    def __init__(self, b_jcu=True):
+    def __init__(self, b_jcu=True, std=0.1, gaussNoise=True):
         super(D_NET256, self).__init__()
+        self.std = std
+        self.gaussNoise = gaussNoise
         ndf = cfg.GAN.DF_DIM
         nef = cfg.TEXT.EMBEDDING_DIM
         self.img_code_s16 = encode_image_by_16times(ndf)
@@ -624,6 +636,9 @@ class D_NET256(nn.Module):
         self.COND_DNET = D_GET_LOGITS(ndf, nef, bcondition=True)
 
     def forward(self, x_var):
+        if cfg.TRAIN.FLAG and self.gaussNoise:
+            noise = (torch.randn(x_var.size())) * self.std
+            x_var = x_var + noise
         x_code16 = self.img_code_s16(x_var)
         x_code8 = self.img_code_s32(x_code16)
         x_code4 = self.img_code_s64(x_code8)
