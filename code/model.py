@@ -567,7 +567,7 @@ class D_GET_LOGITS(nn.Module):
 
 # For 64 x 64 images
 class D_NET64(nn.Module):
-    def __init__(self, rank, b_jcu=True, std=0.1, gaussNoise=True):
+    def __init__(self, rank, b_jcu=True, std=cfg.TRAIN.GAUSSIAN_NOISE_STD, gaussNoise=cfg.TRAIN.GAUSSIAN_NOISE):
         super(D_NET64, self).__init__()
         self.rank = rank
         self.std = std
@@ -593,7 +593,7 @@ class D_NET64(nn.Module):
 
 # For 128 x 128 images
 class D_NET128(nn.Module):
-    def __init__(self, rank, b_jcu=True, std=0.1, gaussNoise=True):
+    def __init__(self, rank, b_jcu=True, std=cfg.TRAIN.GAUSSIAN_NOISE_STD, gaussNoise=cfg.TRAIN.GAUSSIAN_NOISE):
         super(D_NET128, self).__init__()
         self.rank = rank
         self.std = std
@@ -624,7 +624,7 @@ class D_NET128(nn.Module):
 
 # For 256 x 256 images
 class D_NET256(nn.Module):
-    def __init__(self, rank, b_jcu=True, std=0.1, gaussNoise=True):
+    def __init__(self, rank, b_jcu=True, std=cfg.TRAIN.GAUSSIAN_NOISE_STD, gaussNoise=cfg.TRAIN.GAUSSIAN_NOISE):
         super(D_NET256, self).__init__()
         self.rank = rank
         self.std = std

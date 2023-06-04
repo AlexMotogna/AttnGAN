@@ -154,15 +154,15 @@ if __name__ == "__main__":
     print('Using config:')
     pprint.pprint(cfg)
 
-    if not cfg.TRAIN.FLAG:
-        args.manualSeed = 100
-    elif args.manualSeed is None:
-        args.manualSeed = random.randint(1, 10000)
-    random.seed(args.manualSeed)
-    np.random.seed(args.manualSeed)
-    torch.manual_seed(args.manualSeed)
-    if cfg.CUDA:
-        torch.cuda.manual_seed_all(args.manualSeed)
+    # if not cfg.TRAIN.FLAG:
+    #     args.manualSeed = 100
+    # elif args.manualSeed is None:
+    #     args.manualSeed = random.randint(1, 10000)
+    # random.seed(args.manualSeed)
+    # np.random.seed(args.manualSeed)
+    # torch.manual_seed(args.manualSeed)
+    # if cfg.CUDA:
+    #     torch.cuda.manual_seed_all(args.manualSeed)
 
     now = datetime.datetime.now(dateutil.tz.tzlocal())
     timestamp = now.strftime('%Y_%m_%d_%H_%M_%S')
