@@ -99,11 +99,11 @@ class condGANTrainer(object):
         else:
             netG = G_NET(self.rank)
             if cfg.TREE.BRANCH_NUM > 0:
-                netsD.append(D_NET64(rank=self.rank))
+                netsD.append(D_NET64(rank=self.rank, b_jcu=False))
             if cfg.TREE.BRANCH_NUM > 1:
-                netsD.append(D_NET128(rank=self.rank))
+                netsD.append(D_NET128(rank=self.rank, b_jcu=False))
             if cfg.TREE.BRANCH_NUM > 2:
-                netsD.append(D_NET256(rank=self.rank))
+                netsD.append(D_NET256(rank=self.rank, b_jcu=False))
             # TODO: if cfg.TREE.BRANCH_NUM > 3:
         netG.apply(weights_init)
         # print(netG)
