@@ -46,9 +46,9 @@ class condGANTrainer(object):
         self.data_loader = data_loader
         self.num_batches = len(self.data_loader)
 
-        self.log_filename = output_dir + "/log.txt"
-        f = open(self.log_filename, "x")
-        f.close()
+        # self.log_filename = output_dir + "/log.txt"
+        # f = open(self.log_filename, "x")
+        # f.close()
 
     def build_models(self):
         # ###################encoders######################################## #
