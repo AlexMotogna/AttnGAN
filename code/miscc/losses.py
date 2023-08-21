@@ -18,7 +18,7 @@ def cosine_similarity(x1, x2, dim=1, eps=1e-8):
 
 
 def sent_loss(cnn_code, rnn_code, labels, class_ids,
-              batch_size, eps=1e-8):
+              batch_size, gpuId, eps=1e-8):
     # ### Mask mis-match samples  ###
     # that come from the same class as the real sample ###
     masks = []
@@ -31,7 +31,7 @@ def sent_loss(cnn_code, rnn_code, labels, class_ids,
         # masks: batch_size x batch_size
         masks = torch.ByteTensor(masks)
         if cfg.CUDA:
-            masks = masks.cuda()
+            masks = masks.to(gpuId)
 
     # --> seq_len x batch_size x nef
     if cnn_code.dim() == 2:
@@ -60,7 +60,7 @@ def sent_loss(cnn_code, rnn_code, labels, class_ids,
 
 
 def words_loss(img_features, words_emb, labels,
-               cap_lens, class_ids, batch_size):
+               cap_lens, class_ids, batch_size, gpuId):
     """
         words_emb(query): batch x nef x seq_len
         img_features(context): batch x nef x 17 x 17
@@ -118,7 +118,7 @@ def words_loss(img_features, words_emb, labels,
         # masks: batch_size x batch_size
         masks = torch.ByteTensor(masks)
         if cfg.CUDA:
-            masks = masks.cuda()
+            masks = masks.to(gpuId)
 
     similarities = similarities * cfg.TRAIN.SMOOTH.GAMMA3
     if class_ids is not None:
@@ -163,18 +163,18 @@ def discriminator_loss(netD, real_imgs, fake_imgs, conditions,
 
 def generator_loss(netsD, image_encoder, fake_imgs, real_labels,
                    words_embs, sent_emb, match_labels,
-                   cap_lens, class_ids):
+                   cap_lens, class_ids, rank):
     numDs = len(netsD)
     batch_size = real_labels.size(0)
     logs = ''
     # Forward
     errG_total = 0
     for i in range(numDs):
-        features = netsD[i].module(fake_imgs[i])
-        cond_logits = netsD[i].module.COND_DNET(features, sent_emb)
+        features = netsD[i](fake_imgs[i])
+        cond_logits = netsD[i].COND_DNET(features, sent_emb)
         cond_errG = nn.BCELoss()(cond_logits, real_labels)
-        if netsD[i].module.UNCOND_DNET is  not None:
-            logits = netsD[i].module.UNCOND_DNET(features)
+        if netsD[i].UNCOND_DNET is  not None:
+            logits = netsD[i].UNCOND_DNET(features)
             errG = nn.BCELoss()(logits, real_labels)
             g_loss = errG + cond_errG
         else:
@@ -190,13 +190,13 @@ def generator_loss(netsD, image_encoder, fake_imgs, real_labels,
             region_features, cnn_code = image_encoder(fake_imgs[i])
             w_loss0, w_loss1, _ = words_loss(region_features, words_embs,
                                              match_labels, cap_lens,
-                                             class_ids, batch_size)
+                                             class_ids, batch_size, rank)
             w_loss = (w_loss0 + w_loss1) * \
                 cfg.TRAIN.SMOOTH.LAMBDA
             # err_words = err_words + w_loss.data[0]
 
             s_loss0, s_loss1 = sent_loss(cnn_code, sent_emb,
-                                         match_labels, class_ids, batch_size)
+                                         match_labels, class_ids, batch_size, rank)
             s_loss = (s_loss0 + s_loss1) * \
                 cfg.TRAIN.SMOOTH.LAMBDA
             # err_sent = err_sent + s_loss.data[0]

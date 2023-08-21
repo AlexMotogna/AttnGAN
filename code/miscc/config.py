@@ -12,8 +12,8 @@ cfg = __C
 # Dataset name: flowers, birds
 __C.DATASET_NAME = 'covers'
 __C.CONFIG_NAME = ''
-__C.DATA_DIR = './covers/BOOK_DB'
-__C.OUTPUT_DIR = '../output'
+__C.DATA_DIR = '../../../dataset/BOOK_DB'
+__C.OUTPUT_DIR = '../../../output'
 __C.GPU_ID = 0
 __C.CUDA = True
 __C.WORKERS = 6
@@ -28,17 +28,23 @@ __C.TREE.BASE_SIZE = 64
 
 # Training options
 __C.TRAIN = edict()
-__C.TRAIN.BATCH_SIZE = 64
+__C.TRAIN.BATCH_SIZE = 16
 __C.TRAIN.MAX_EPOCH = 600
-__C.TRAIN.SNAPSHOT_INTERVAL = 2000
+__C.TRAIN.SNAPSHOT_INTERVAL = 25
 __C.TRAIN.DISCRIMINATOR_LR = 2e-4
 __C.TRAIN.GENERATOR_LR = 2e-4
 __C.TRAIN.ENCODER_LR = 2e-4
 __C.TRAIN.RNN_GRAD_CLIP = 0.25
 __C.TRAIN.FLAG = True
-__C.TRAIN.NET_E = ''
+__C.TRAIN.NET_E = '../../../models/Run2/text_encoder550.pth'
 __C.TRAIN.NET_G = ''
 __C.TRAIN.B_NET_D = True
+__C.TRAIN.D_TRAIN_DELAY = 1
+__C.TRAIN.G_LR_DECAY = 1
+__C.TRAIN.G_LR_DECAY_LOWER_BOUND = 0.00001
+__C.TRAIN.G_LR_DECAY_INTERVAL = 600
+__C.TRAIN.GAUSSIAN_NOISE = True
+__C.TRAIN.GAUSSIAN_NOISE_STD = 0.1
 
 __C.TRAIN.SMOOTH = edict()
 __C.TRAIN.SMOOTH.GAMMA1 = 5.0
@@ -51,7 +57,7 @@ __C.TRAIN.SMOOTH.LAMBDA = 1.0
 __C.GAN = edict()
 __C.GAN.DF_DIM = 64
 __C.GAN.GF_DIM = 128
-__C.GAN.Z_DIM = 100
+__C.GAN.Z_DIM = 256
 __C.GAN.CONDITION_DIM = 100
 __C.GAN.R_NUM = 2
 __C.GAN.B_ATTENTION = True
@@ -59,7 +65,7 @@ __C.GAN.B_DCGAN = False
 
 
 __C.TEXT = edict()
-__C.TEXT.CAPTIONS_PER_IMAGE = 6
+__C.TEXT.CAPTIONS_PER_IMAGE = 1
 __C.TEXT.EMBEDDING_DIM = 256
 __C.TEXT.WORDS_NUM = 18
 

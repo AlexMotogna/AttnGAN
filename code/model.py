@@ -271,8 +271,9 @@ class CNN_ENCODER(nn.Module):
 class CA_NET(nn.Module):
     # some code is modified from vae examples
     # (https://github.com/pytorch/examples/blob/master/vae/main.py)
-    def __init__(self):
+    def __init__(self, rank):
         super(CA_NET, self).__init__()
+        self.rank = rank
         self.t_dim = cfg.TEXT.EMBEDDING_DIM
         self.c_dim = cfg.GAN.CONDITION_DIM
         self.fc = nn.Linear(self.t_dim, self.c_dim * 4, bias=True)
@@ -287,7 +288,7 @@ class CA_NET(nn.Module):
     def reparametrize(self, mu, logvar):
         std = logvar.mul(0.5).exp_()
         if cfg.CUDA:
-            eps = torch.cuda.FloatTensor(std.size()).normal_()
+            eps = torch.FloatTensor(std.size()).normal_().to(self.rank)
         else:
             eps = torch.FloatTensor(std.size()).normal_()
         eps = Variable(eps)
@@ -395,12 +396,13 @@ class GET_IMAGE_G(nn.Module):
 
 
 class G_NET(nn.Module):
-    def __init__(self):
+    def __init__(self, rank):
         super(G_NET, self).__init__()
         ngf = cfg.GAN.GF_DIM
         nef = cfg.TEXT.EMBEDDING_DIM
         ncf = cfg.GAN.CONDITION_DIM
-        self.ca_net = CA_NET()
+        self.rank = rank
+        self.ca_net = CA_NET(self.rank)
 
         if cfg.TREE.BRANCH_NUM > 0:
             self.h_net1 = INIT_STAGE_G(ngf * 16, ncf)
@@ -449,12 +451,13 @@ class G_NET(nn.Module):
 
 
 class G_DCGAN(nn.Module):
-    def __init__(self):
+    def __init__(self, rank):
         super(G_DCGAN, self).__init__()
         ngf = cfg.GAN.GF_DIM
         nef = cfg.TEXT.EMBEDDING_DIM
         ncf = cfg.GAN.CONDITION_DIM
-        self.ca_net = CA_NET()
+        self.rank = rank
+        self.ca_net = CA_NET(self.rank)
 
         # 16gf x 64 x 64 --> gf x 64 x 64 --> 3 x 64 x 64
         if cfg.TREE.BRANCH_NUM > 0:
@@ -564,8 +567,11 @@ class D_GET_LOGITS(nn.Module):
 
 # For 64 x 64 images
 class D_NET64(nn.Module):
-    def __init__(self, b_jcu=True):
+    def __init__(self, rank, b_jcu=True, std=cfg.TRAIN.GAUSSIAN_NOISE_STD, gaussNoise=cfg.TRAIN.GAUSSIAN_NOISE):
         super(D_NET64, self).__init__()
+        self.rank = rank
+        self.std = std
+        self.gaussNoise = gaussNoise
         ndf = cfg.GAN.DF_DIM
         nef = cfg.TEXT.EMBEDDING_DIM
         self.img_code_s16 = encode_image_by_16times(ndf)
@@ -576,14 +582,22 @@ class D_NET64(nn.Module):
         self.COND_DNET = D_GET_LOGITS(ndf, nef, bcondition=True)
 
     def forward(self, x_var):
+        if cfg.TRAIN.FLAG and self.gaussNoise:
+            noise = (torch.randn(x_var.size())) * self.std
+            if cfg.CUDA:
+                noise = noise.to(self.rank)
+            x_var = x_var + noise
         x_code4 = self.img_code_s16(x_var)  # 4 x 4 x 8df
         return x_code4
 
 
 # For 128 x 128 images
 class D_NET128(nn.Module):
-    def __init__(self, b_jcu=True):
+    def __init__(self, rank, b_jcu=True, std=cfg.TRAIN.GAUSSIAN_NOISE_STD, gaussNoise=cfg.TRAIN.GAUSSIAN_NOISE):
         super(D_NET128, self).__init__()
+        self.rank = rank
+        self.std = std
+        self.gaussNoise = gaussNoise
         ndf = cfg.GAN.DF_DIM
         nef = cfg.TEXT.EMBEDDING_DIM
         self.img_code_s16 = encode_image_by_16times(ndf)
@@ -597,6 +611,11 @@ class D_NET128(nn.Module):
         self.COND_DNET = D_GET_LOGITS(ndf, nef, bcondition=True)
 
     def forward(self, x_var):
+        if cfg.TRAIN.FLAG and self.gaussNoise:
+            noise = (torch.randn(x_var.size())) * self.std
+            if cfg.CUDA:
+                noise = noise.to(self.rank)
+            x_var = x_var + noise
         x_code8 = self.img_code_s16(x_var)   # 8 x 8 x 8df
         x_code4 = self.img_code_s32(x_code8)   # 4 x 4 x 16df
         x_code4 = self.img_code_s32_1(x_code4)  # 4 x 4 x 8df
@@ -605,8 +624,11 @@ class D_NET128(nn.Module):
 
 # For 256 x 256 images
 class D_NET256(nn.Module):
-    def __init__(self, b_jcu=True):
+    def __init__(self, rank, b_jcu=True, std=cfg.TRAIN.GAUSSIAN_NOISE_STD, gaussNoise=cfg.TRAIN.GAUSSIAN_NOISE):
         super(D_NET256, self).__init__()
+        self.rank = rank
+        self.std = std
+        self.gaussNoise = gaussNoise
         ndf = cfg.GAN.DF_DIM
         nef = cfg.TEXT.EMBEDDING_DIM
         self.img_code_s16 = encode_image_by_16times(ndf)
@@ -621,6 +643,11 @@ class D_NET256(nn.Module):
         self.COND_DNET = D_GET_LOGITS(ndf, nef, bcondition=True)
 
     def forward(self, x_var):
+        if cfg.TRAIN.FLAG and self.gaussNoise:
+            noise = (torch.randn(x_var.size())) * self.std
+            if cfg.CUDA:
+                noise = noise.to(self.rank)
+            x_var = x_var + noise
         x_code16 = self.img_code_s16(x_var)
         x_code8 = self.img_code_s32(x_code16)
         x_code4 = self.img_code_s64(x_code8)
