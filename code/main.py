@@ -1,7 +1,7 @@
 from __future__ import print_function
 
 from miscc.config import cfg, cfg_from_file
-from datasets import TextDataset
+from datasets import TextDataset, TextDatasetCSV
 from trainer import condGANTrainer as trainer
 
 import os
@@ -93,7 +93,12 @@ def gen_example(wordtoix, algo):
 def setup(rank, world_size):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
-    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+    dist.init_process_group(
+        backend = "gloo" if os.name == "nt" or not torch.cuda.is_available() else "nccl",
+        init_method="env://",
+        rank=rank,
+        world_size=world_size
+    )
 
 def cleanup():
     dist.destroy_process_group()
@@ -111,7 +116,7 @@ def run(rank, world_size, cfg, output_dir):
         transforms.Resize(int(imsize * 76 / 64)),
         transforms.RandomCrop(imsize),
         transforms.RandomHorizontalFlip()])
-    dataset = TextDataset(cfg.DATA_DIR, split_dir,
+    dataset = TextDatasetCSV(cfg.DATA_DIR,
                           base_size=cfg.TREE.BASE_SIZE,
                           transform=image_transform)
     assert dataset
@@ -169,7 +174,7 @@ if __name__ == "__main__":
     output_dir = '%s/%s_%s_%s' % \
         (cfg.OUTPUT_DIR, cfg.DATASET_NAME, cfg.CONFIG_NAME, timestamp)
 
-    world_size = torch.cuda.device_count()
+    world_size = 1
     print(world_size)
 
     mp.spawn(

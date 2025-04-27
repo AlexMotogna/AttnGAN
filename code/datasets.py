@@ -296,3 +296,118 @@ class TextDataset(data.Dataset):
 
     def __len__(self):
         return len(self.filenames)
+
+
+class TextDatasetCSV(data.Dataset):
+    def __init__(self, csv_path, base_size=64, transform=None, target_transform=None):
+        self.transform = transform
+        self.norm = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+        self.target_transform = target_transform
+        self.embeddings_num = 1
+
+        self.imsize = []
+        for i in range(cfg.TREE.BRANCH_NUM):
+            self.imsize.append(base_size)
+            base_size = base_size * 2
+
+        # Load CSV file
+        self.data = pd.read_csv(csv_path)
+        assert 'image_path' in self.data.columns and 'caption' in self.data.columns, \
+            "CSV must have 'image_path' and 'caption' columns."
+
+        self.image_paths = self.data['image_path'].tolist()
+        self.raw_captions = self.data['caption'].tolist()
+
+        # Process all captions into tokenized word indices
+        self.captions, self.ixtoword, self.wordtoix, self.n_words = self.build_dictionary(self.raw_captions)
+        self.number_example = len(self.image_paths)
+
+    def build_dictionary(self, captions_text):
+        word_counts = defaultdict(float)
+        tokenizer = RegexpTokenizer(r'\w+')
+
+        all_captions = []
+        for sent in captions_text:
+            tokens = tokenizer.tokenize(sent.lower())
+            tokens = [t.encode('ascii', 'ignore').decode('ascii') for t in tokens if t]
+            all_captions.append(tokens)
+            for word in tokens:
+                word_counts[word] += 1
+
+        vocab = [w for w in word_counts if word_counts[w] >= 0]
+
+        ixtoword = {0: '<end>'}
+        wordtoix = {'<end>': 0}
+        ix = 1
+        for w in vocab:
+            wordtoix[w] = ix
+            ixtoword[ix] = w
+            ix += 1
+
+        captions_indices = []
+        for tokens in all_captions:
+            caption = [wordtoix[t] for t in tokens if t in wordtoix]
+            captions_indices.append(caption)
+
+        return captions_indices, ixtoword, wordtoix, len(ixtoword)
+
+    def get_caption(self, index):
+        sent_caption = np.asarray(self.captions[index]).astype('int64')
+
+        if (sent_caption == 0).sum() > 0:
+            print('ERROR: do not need END (0) token', sent_caption)
+        num_words = len(sent_caption)
+
+        x = np.zeros((cfg.TEXT.WORDS_NUM, 1), dtype='int64')
+        x_len = num_words
+        if num_words <= cfg.TEXT.WORDS_NUM:
+            x[:num_words, 0] = sent_caption
+        else:
+            ix = list(np.arange(num_words))
+            np.random.shuffle(ix)
+            ix = ix[:cfg.TEXT.WORDS_NUM]
+            ix = np.sort(ix)
+            x[:, 0] = sent_caption[ix]
+            x_len = cfg.TEXT.WORDS_NUM
+        return x, x_len
+
+    def __getitem__(self, index):
+        img_path = self.image_paths[index]
+        cls_id = index  # Dummy class ID
+        key = os.path.splitext(os.path.basename(img_path))[0]
+
+        imgs = get_imgs(img_path, self.imsize,
+                        bbox=None, transform=self.transform, normalize=self.norm)
+
+        caps, cap_len = self.get_caption(index)
+
+        return imgs, caps, cap_len, cls_id, key
+
+    def __len__(self):
+        return len(self.image_paths)
+
+
+
+class COCODataset(data.Dataset):
+    def __init__(self, csv_file, transform=None):
+        self.data = pd.read_csv(csv_file)
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        img_path = self.data.iloc[idx, 0]
+        image = Image.open(img_path).convert("RGB")
+        caption = self.data.iloc[idx, 2]
+
+        if self.transform:
+            image = self.transform(image)
+
+        return image, caption
+
+def get_coco_dataloader(csv_file, batch_size=32, transform=None, shuffle=True, num_workers=2):
+    dataset = COCODataset(csv_file, transform=transform)
+    return data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
