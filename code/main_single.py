@@ -90,22 +90,7 @@ def gen_example(wordtoix, algo):
     algo.gen_example(data_dic)
 
 
-def setup(rank, world_size):
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12355'
-    dist.init_process_group(
-        backend = "gloo" if os.name == "nt" or not torch.cuda.is_available() else "nccl",
-        init_method="env://",
-        rank=rank,
-        world_size=world_size
-    )
-
-def cleanup():
-    dist.destroy_process_group()
-
-
-def run(rank, world_size, cfg, output_dir):
-    setup(rank, world_size)
+def run(cfg, output_dir):
     split_dir, bshuffle = 'train', True
     if not cfg.TRAIN.FLAG:
         split_dir = 'test'
@@ -121,14 +106,12 @@ def run(rank, world_size, cfg, output_dir):
                           transform=image_transform)
     assert dataset
 
-    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=False)
-
     dataloader = torch.utils.data.DataLoader(
         dataset, batch_size=cfg.TRAIN.BATCH_SIZE,
-        drop_last=True, num_workers=0, sampler=sampler)
+        drop_last=True, num_workers=1)
     
     # Define models and go to train/evaluate
-    algo = trainer(output_dir, dataloader, dataset.n_words, dataset.ixtoword, rank)
+    algo = trainer(output_dir, dataloader, dataset.n_words, dataset.ixtoword, 'cpu')
 
     start_t = time.time()
     if cfg.TRAIN.FLAG:
@@ -141,7 +124,6 @@ def run(rank, world_size, cfg, output_dir):
             gen_example(dataset.wordtoix, algo)  # generate images for customized captions
     end_t = time.time()
     print('Total time for training:', end_t - start_t)
-    cleanup()
 
 
 if __name__ == "__main__":
@@ -174,11 +156,4 @@ if __name__ == "__main__":
     output_dir = '%s/%s_%s_%s' % \
         (cfg.OUTPUT_DIR, cfg.DATASET_NAME, cfg.CONFIG_NAME, timestamp)
 
-    world_size = 1
-    print(world_size)
-
-    mp.spawn(
-        run,
-        args=(world_size, cfg, output_dir),
-        nprocs=world_size
-    )
+    run(cfg, output_dir)

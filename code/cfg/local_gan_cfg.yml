@@ -1,10 +1,11 @@
 CONFIG_NAME: 'GAN_Local'
 
 DATASET_NAME: 'covers'
-DATA_DIR: 'C:\Users\alexm\Desktop\master\Dizertatie\toy_dataset\train.csv'
+DATA_DIR: 'C:\Users\alexm\Desktop\master\Dizertatie\toy_dataset\train_vectors.csv'
 OUTPUT_DIR: '../output'
 GPU_ID: 0
 WORKERS: 1
+CUDA: False
 
 
 TREE:
@@ -21,7 +22,7 @@ TRAIN:
     DISCRIMINATOR_LR: 0.002
     GENERATOR_LR: 0.002
     #
-    NET_E : './DAMSMencoders/text_encoder550.pth' #text encoder 
+    NET_E : '../DAMSMencoders/text_encoder550.pth' #text encoder 
     SMOOTH:
         GAMMA1: 4.0  # 1,2,5 good 4 best  10&100bad
         GAMMA2: 5.0
@@ -36,5 +37,5 @@ GAN:
     R_NUM: 2
 
 TEXT:
-    EMBEDDING_DIM: 256  # 768 for GPT-2, 256 for the default RNN_ENCODER bi-directional LSTM
+    EMBEDDING_DIM: 768  # 768 for GPT-2, 256 for the default RNN_ENCODER bi-directional LSTM
     CAPTIONS_PER_IMAGE: 1

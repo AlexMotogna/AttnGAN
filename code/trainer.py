@@ -19,6 +19,7 @@ from model import G_DCGAN, G_NET
 from datasets import prepare_data
 from model import RNN_ENCODER, CNN_ENCODER
 from model import D_NET64, D_NET128, D_NET256
+from embedding_generator import EmbeddingGenerator
 
 from miscc.losses import words_loss
 from miscc.losses import discriminator_loss, generator_loss, KL_loss
@@ -26,6 +27,21 @@ import os
 import time
 import numpy as np
 import sys
+
+
+def init_weights(m):
+            classname = m.__class__.__name__
+            if isinstance(m, torch.nn.Linear) or isinstance(m, torch.nn.Conv1d):
+                torch.nn.init.normal_(m.weight.data, mean=0.0, std=0.02)
+                if m.bias is not None:
+                    torch.nn.init.constant_(m.bias.data, 0)
+            elif isinstance(m, torch.nn.GRU) or isinstance(m, torch.nn.LSTM):
+                for name, param in m.named_parameters():
+                    if 'weight' in name:
+                        torch.nn.init.normal_(param.data, mean=0.0, std=0.02)
+                    elif 'bias' in name:
+                        torch.nn.init.constant_(param.data, 0)
+
 
 # ################# Text to image task############################ #
 class condGANTrainer(object):
@@ -53,6 +69,8 @@ class condGANTrainer(object):
         self.data_loader = data_loader
         self.num_batches = len(self.data_loader)
 
+        self.embedding_generator = EmbeddingGenerator()
+
         self.g_lr = cfg.TRAIN.GENERATOR_LR
 
         # self.log_filename = output_dir + "/log.txt"
@@ -67,9 +85,10 @@ class condGANTrainer(object):
 
         image_encoder = CNN_ENCODER(cfg.TEXT.EMBEDDING_DIM)
         img_encoder_path = cfg.TRAIN.NET_E.replace('text_encoder', 'image_encoder')
-        state_dict = \
-            torch.load(img_encoder_path, map_location=lambda storage, loc: storage)
-        image_encoder.load_state_dict(state_dict)
+        # state_dict = \
+        #     torch.load(img_encoder_path, map_location=lambda storage, loc: storage)
+        # image_encoder.load_state_dict(state_dict)
+        image_encoder.apply(init_weights)
         for p in image_encoder.parameters():
             p.requires_grad = False
         print('Load image encoder from:', img_encoder_path)
@@ -77,10 +96,13 @@ class condGANTrainer(object):
 
         text_encoder = \
             RNN_ENCODER(self.n_words, nhidden=cfg.TEXT.EMBEDDING_DIM)
-        state_dict = \
-            torch.load(cfg.TRAIN.NET_E,
-                       map_location=lambda storage, loc: storage)
-        text_encoder.load_state_dict(state_dict)
+        # state_dict = \
+        #     torch.load(cfg.TRAIN.NET_E,
+        #                map_location=lambda storage, loc: storage)
+        # text_encoder.load_state_dict(state_dict)
+
+        text_encoder.apply(init_weights)
+
         for p in text_encoder.parameters():
             p.requires_grad = False
         print('Load text encoder from:', cfg.TRAIN.NET_E)
@@ -195,7 +217,7 @@ class condGANTrainer(object):
                 p.requires_grad = brequires
 
     def save_img_results(self, netG, noise, sent_emb, words_embs, mask,
-                         image_encoder, captions, cap_lens,
+                         image_region_vector, captions, cap_lens,
                          gen_iterations, name='current'):
         # Save images
         fake_imgs, attention_maps, _, _ = netG(noise, sent_emb, words_embs, mask)
@@ -220,7 +242,7 @@ class condGANTrainer(object):
         # for i in range(len(netsD)):
         i = -1
         img = fake_imgs[i].detach()
-        region_features, _ = image_encoder(img)
+        region_features = image_region_vector
         att_sze = region_features.size(2)
         _, _, att_maps = words_loss(region_features.detach(),
                                     words_embs.detach(),
@@ -236,7 +258,7 @@ class condGANTrainer(object):
             im.save(fullpath)
 
     def train(self):
-        text_encoder, image_encoder, netG, netsD, start_epoch = self.build_models()
+        _, _, netG, netsD, start_epoch = self.build_models()
         avg_param_G = copy_G_params(netG)
         optimizerG, optimizersD = self.define_optimizers(netG, netsD)
         real_labels, fake_labels, match_labels = self.prepare_labels()
@@ -252,8 +274,9 @@ class condGANTrainer(object):
         # gen_iterations = start_epoch * self.num_batches
         for epoch in range(start_epoch, self.max_epoch + 1):
             start_t = time.time()
-            self.data_loader.sampler.set_epoch(epoch)
+            # self.data_loader.sampler.set_epoch(epoch)
             for step, data in enumerate(self.data_loader, 0):
+                print(step)
                 # reset requires_grad to be trainable for all Ds
                 # self.set_requires_grad_value(netsD, True)
 
@@ -261,14 +284,22 @@ class condGANTrainer(object):
                 # (1) Prepare training data and Compute text embeddings
                 ######################################################
                 # data = data_iter.next()
-                
-                imgs, captions, cap_lens, class_ids, keys = prepare_data(data, self.rank)
+                imgs, captions, cap_lens, class_ids, keys, raw_captions, sent_vector, word_vector, image_vector, image_region_vector = prepare_data(data, self.rank)
+                print("cap_len", cap_lens)
 
-                hidden = text_encoder.init_hidden(batch_size)
+                # hidden = text_encoder.init_hidden(batch_size)
                 # words_embs: batch_size x nef x seq_len
                 # sent_emb: batch_size x nef
-                words_embs, sent_emb = text_encoder(captions, cap_lens, hidden)
+                # words_embs, sent_emb = text_encoder(captions, cap_lens, hidden)
+                words_embs = word_vector
+                sent_emb = sent_vector
+
+                print(words_embs.shape, sent_emb.shape)
+
+                # print('word', words_embs.shape)  #word torch.Size([16, 768, 12])
+                # print('sent', sent_emb.shape) #sent torch.Size([16, 768])
                 words_embs, sent_emb = words_embs.detach(), sent_emb.detach()
+
                 mask = (captions == 0)
                 num_words = words_embs.size(2)
                 if mask.size(1) > num_words:
@@ -311,8 +342,9 @@ class condGANTrainer(object):
                 # self.set_requires_grad_value(netsD, False)
                 netG.zero_grad()
                 errG_total, G_logs = \
-                    generator_loss(netsD, image_encoder, fake_imgs, real_labels,
+                    generator_loss(netsD, image_vector, image_region_vector, fake_imgs, real_labels,
                                    words_embs, sent_emb, match_labels, cap_lens, class_ids, self.rank)
+                # Image torch.Size([16, 768, 17, 17]) torch.Size([16, 768])
                 kl_loss = KL_loss(mu, logvar)
                 errG_total += kl_loss
                 G_logs += 'kl_loss: %.2f ' % kl_loss.data
@@ -329,42 +361,42 @@ class condGANTrainer(object):
                     backup_para = copy_G_params(netG)
                     load_params(netG, avg_param_G)
                     self.save_img_results(netG, fixed_noise, sent_emb,
-                                          words_embs, mask, image_encoder,
+                                          words_embs, mask, image_region_vector,
                                           captions, cap_lens, epoch, name='average')
                     load_params(netG, backup_para)
 
             end_t = time.time()
 
             if (epoch % cfg.TRAIN.D_TRAIN_DELAY == 0):
-                print('''Rank %d: [%d/%d][%d]
+                print('''Rank : [%d/%d][%d]
                     Loss_D: %.2f Loss_G: %.2f Time: %.2fs'''
-                    % (self.rank, epoch, self.max_epoch, self.num_batches,
+                    % (epoch, self.max_epoch, self.num_batches,
                         errD_total.data, errG_total.data,
                         end_t - start_t))
                 
                 f = open(self.log_filename, "a")
-                f.write('''Rank %d: [%d/%d][%d]
+                f.write('''Rank : [%d/%d][%d]
                     Loss_D: %.2f Loss_G: %.2f Time: %.2fs \n'''
-                    % (self.rank, epoch, self.max_epoch, self.num_batches,
+                    % (epoch, self.max_epoch, self.num_batches,
                         errD_total.data, errG_total.data,
                         end_t - start_t))
                 f.close()
             else:
-                print('''Rank %d: [%d/%d][%d]
+                print('''Rank : [%d/%d][%d]
                     Loss_G: %.2f Time: %.2fs'''
-                    % (self.rank, epoch, self.max_epoch, self.num_batches,
+                    % (epoch, self.max_epoch, self.num_batches,
                         errG_total.data,
                         end_t - start_t))
                 
                 f = open(self.log_filename, "a")
-                f.write('''Rank %d: [%d/%d][%d]
+                f.write('''Rank: [%d/%d][%d]
                     Loss_G: %.2f Time: %.2fs \n'''
-                    % (self.rank, epoch, self.max_epoch, self.num_batches,
+                    % (epoch, self.max_epoch, self.num_batches,
                         errG_total.data,
                         end_t - start_t))
                 f.close()
 
-            dist.barrier()
+            # dist.barrier()
 
             if epoch % cfg.TRAIN.G_LR_DECAY_INTERVAL == 0 and epoch != 0:
                 self.g_lr = self.g_lr * cfg.TRAIN.G_LR_DECAY

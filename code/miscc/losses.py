@@ -49,7 +49,7 @@ def sent_loss(cnn_code, rnn_code, labels, class_ids,
     # --> batch_size x batch_size
     scores0 = scores0.squeeze()
     if class_ids is not None:
-        scores0.data.masked_fill_(masks, -float('inf'))
+        scores0.data.masked_fill_(masks.bool(), -float('inf'))
     scores1 = scores0.transpose(0, 1)
     if labels is not None:
         loss0 = nn.CrossEntropyLoss()(scores0, labels)
@@ -122,7 +122,7 @@ def words_loss(img_features, words_emb, labels,
 
     similarities = similarities * cfg.TRAIN.SMOOTH.GAMMA3
     if class_ids is not None:
-        similarities.data.masked_fill_(masks, -float('inf'))
+        similarities.data.masked_fill_(masks.bool(), -float('inf'))
     similarities1 = similarities.transpose(0, 1)
     if labels is not None:
         loss0 = nn.CrossEntropyLoss()(similarities, labels)
@@ -161,7 +161,7 @@ def discriminator_loss(netD, real_imgs, fake_imgs, conditions,
     return errD
 
 
-def generator_loss(netsD, image_encoder, fake_imgs, real_labels,
+def generator_loss(netsD, image_vector, image_region_vector, fake_imgs, real_labels,
                    words_embs, sent_emb, match_labels,
                    cap_lens, class_ids, rank):
     numDs = len(netsD)
@@ -187,7 +187,9 @@ def generator_loss(netsD, image_encoder, fake_imgs, real_labels,
         if i == (numDs - 1):
             # words_features: batch_size x nef x 17 x 17
             # sent_code: batch_size x nef
-            region_features, cnn_code = image_encoder(fake_imgs[i])
+            region_features = image_region_vector
+            cnn_code = image_vector
+            print("Image", region_features.shape, cnn_code.shape)
             w_loss0, w_loss1, _ = words_loss(region_features, words_embs,
                                              match_labels, cap_lens,
                                              class_ids, batch_size, rank)

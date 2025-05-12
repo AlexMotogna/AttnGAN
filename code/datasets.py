@@ -26,7 +26,7 @@ else:
 
 
 def prepare_data(data, gpuId):
-    imgs, captions, captions_lens, class_ids, keys = data
+    imgs, captions, captions_lens, class_ids, keys, raw_captions, sent_vector, word_vector, image_vector, image_region_vector = data
 
     # sort data by the length in a decreasing order
     sorted_cap_lens, sorted_cap_indices = \
@@ -52,8 +52,13 @@ def prepare_data(data, gpuId):
         captions = Variable(captions)
         sorted_cap_lens = Variable(sorted_cap_lens)
 
+    sent_vector = sent_vector.squeeze()
+    word_vector = word_vector.squeeze()
+    image_vector = image_vector.squeeze()
+    image_region_vector = image_region_vector.squeeze()
+
     return [real_imgs, captions, sorted_cap_lens,
-            class_ids, keys]
+            class_ids, keys, raw_captions, sent_vector, word_vector, image_vector, image_region_vector]
 
 
 def get_imgs(img_path, imsize, bbox=None,
@@ -88,214 +93,22 @@ def get_imgs(img_path, imsize, bbox=None,
     return ret
 
 
-class TextDataset(data.Dataset):
-    def __init__(self, data_dir, split='train',
-                 base_size=64,
-                 transform=None, target_transform=None):
-        self.transform = transform
-        self.split = split
-        self.norm = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
-        self.target_transform = target_transform
-        self.embeddings_num = cfg.TEXT.CAPTIONS_PER_IMAGE
-
-        self.imsize = []
-        for i in range(cfg.TREE.BRANCH_NUM):
-            self.imsize.append(base_size)
-            base_size = base_size * 2
-
-        self.data = []
-        self.data_dir = data_dir
-        self.bbox = None
-        split_dir = os.path.join(data_dir, split)
-
-        self.filenames, self.captions, self.ixtoword, \
-            self.wordtoix, self.n_words = self.load_text_data(data_dir, split)
-
-        self.class_id = self.load_class_id(split_dir, len(self.filenames))
-        self.number_example = len(self.filenames)
-
-    def load_captions(self, data_dir, filenames):
-        all_captions = []
-        for i in range(len(filenames)):
-            cap_path = '%s/text/%s.txt' % (data_dir, filenames[i])
-            with open(cap_path, "r") as f:
-                # captions = f.read().decode('utf8').split('\n')
-                captions = f.read().split('\n')
-                cnt = 0
-                for cap in captions:
-                    if len(cap) == 0:
-                        continue
-                    cap = cap.replace("\ufffd\ufffd", " ")
-                    # picks out sequences of alphanumeric characters as tokens
-                    # and drops everything else
-                    tokenizer = RegexpTokenizer(r'\w+')
-                    tokens = tokenizer.tokenize(cap.lower())
-                    # print('tokens', tokens)
-                    if len(tokens) == 0:
-                        print('cap', cap)
-                        continue
-
-                    tokens_new = []
-                    for t in tokens:
-                        t = t.encode('ascii', 'ignore').decode('ascii')
-                        if len(t) > 0:
-                            tokens_new.append(t)
-
-                    all_captions.append(tokens_new)
-                    cnt += 1
-                    if cnt == self.embeddings_num:
-                        break
-                if cnt < self.embeddings_num:
-                    print('ERROR: the captions for %s less than %d'
-                          % (filenames[i], cnt))
-        return all_captions
-
-    def build_dictionary(self, train_captions, test_captions):
-        word_counts = defaultdict(float)
-        captions = train_captions + test_captions
-        for sent in captions:
-            for word in sent:
-                word_counts[word] += 1
-
-        vocab = [w for w in word_counts if word_counts[w] >= 0]
-
-        ixtoword = {}
-        ixtoword[0] = '<end>'
-        wordtoix = {}
-        wordtoix['<end>'] = 0
-        ix = 1
-        for w in vocab:
-            wordtoix[w] = ix
-            ixtoword[ix] = w
-            ix += 1
-
-        train_captions_new = []
-        for t in train_captions:
-            rev = []
-            for w in t:
-                if w in wordtoix:
-                    rev.append(wordtoix[w])
-            # rev.append(0)  # do not need '<end>' token
-            train_captions_new.append(rev)
-
-        test_captions_new = []
-        for t in test_captions:
-            rev = []
-            for w in t:
-                if w in wordtoix:
-                    rev.append(wordtoix[w])
-            # rev.append(0)  # do not need '<end>' token
-            test_captions_new.append(rev)
-
-        return [train_captions_new, test_captions_new,
-                ixtoword, wordtoix, len(ixtoword)]
-
-    def load_text_data(self, data_dir, split):
-        filepath = os.path.join(data_dir, 'captions.pickle')
-        train_names = self.load_filenames(data_dir, 'train')
-        test_names = self.load_filenames(data_dir, 'test')
-        if not os.path.isfile(filepath):
-            train_captions = self.load_captions(data_dir, train_names)
-            test_captions = self.load_captions(data_dir, test_names)
-
-            train_captions, test_captions, ixtoword, wordtoix, n_words = \
-                self.build_dictionary(train_captions, test_captions)
-
-            with open(filepath, 'wb') as f:
-                pickle.dump([train_captions, test_captions,
-                             ixtoword, wordtoix], f, protocol=2)
-                print('Save to: ', filepath)
-        else:
-            with open(filepath, 'rb') as f:
-                x = pickle.load(f)
-                train_captions, test_captions = x[0], x[1]
-                ixtoword, wordtoix = x[2], x[3]
-                del x
-                n_words = len(ixtoword)
-                print('Load from: ', filepath)
-        if split == 'train':
-            # a list of list: each list contains
-            # the indices of words in a sentence
-            captions = train_captions
-            filenames = train_names
-        else:  # split=='test'
-            captions = test_captions
-            filenames = test_names
-        return filenames, captions, ixtoword, wordtoix, n_words
-
-    def load_class_id(self, data_dir, total_num):
-        if os.path.isfile(data_dir + '/class_info.pickle'):
-            with open(data_dir + '/class_info.pickle', 'rb') as f:
-                class_id = pickle.load(f, encoding="bytes")
-        else:
-            class_id = np.arange(total_num)
-        return class_id
-
-    def load_filenames(self, data_dir, split):
-        filepath = '%s/%s/filenames.pickle' % (data_dir, split)
-
-        if os.path.isfile(filepath):
-            with open(filepath, 'rb') as f:
-                filenames = pickle.load(f)
-                print('Load filenames from: %s (%d)' % (filepath, len(filenames)))
-        else:
-            filenamesPath = os.path.join(self.data_dir, split) + ".txt"
-            with open(filenamesPath, 'r') as f:
-                filenames = [line.rstrip('\n') for line in f]
-                picklefile = open(filepath, 'wb')
-                pickle.dump(filenames, picklefile)
-                print('Saved filenames from: %s (%d)' % (filepath, len(filenames)))
-                    
-        return filenames
-
-    def get_caption(self, sent_ix):
-        # a list of indices for a sentence
-        sent_caption = np.asarray(self.captions[sent_ix]).astype('int64')
-
-        if (sent_caption == 0).sum() > 0:
-            print('ERROR: do not need END (0) token', sent_caption)
-        num_words = len(sent_caption)
-        # pad with 0s (i.e., '<end>')
-        x = np.zeros((cfg.TEXT.WORDS_NUM, 1), dtype='int64')
-        x_len = num_words
-        if num_words <= cfg.TEXT.WORDS_NUM:
-            x[:num_words, 0] = sent_caption
-        else:
-            ix = list(np.arange(num_words))  # 1, 2, 3,..., maxNum
-            np.random.shuffle(ix)
-            ix = ix[:cfg.TEXT.WORDS_NUM]
-            ix = np.sort(ix)
-            x[:, 0] = sent_caption[ix]
-            x_len = cfg.TEXT.WORDS_NUM
-        return x, x_len
-
-    def __getitem__(self, index):
-        #
-        key = self.filenames[index]
-        cls_id = self.class_id[index]
-        #
-        bbox = None
-        data_dir = self.data_dir
-        #
-        img_name = '%s/images/%s.jpg' % (data_dir, key)
-        imgs = get_imgs(img_name, self.imsize,
-                        bbox, self.transform, normalize=self.norm)
-        # random select a sentence
-
-        if(self.embeddings_num == 1):
-            sent_ix = 0
-        else:
-            sent_ix = random.randint(0, self.embeddings_num - 1)
-        
-        new_sent_ix = index * self.embeddings_num + sent_ix
-        caps, cap_len = self.get_caption(new_sent_ix)
-        return imgs, caps, cap_len, cls_id, key
+def load_tensor(filepath):
+    return torch.load(filepath)
 
 
-    def __len__(self):
-        return len(self.filenames)
+def pad_tensor_to_dim(tensor, dim, target_size):
+    current_size = tensor.size(dim)
+    if current_size >= target_size:
+        return tensor
+
+    pad_amount = target_size - current_size
+
+    pad = [0] * (2 * tensor.dim())
+    pad_index = 2 * (tensor.dim() - dim - 1)
+    pad[pad_index] = pad_amount
+
+    return torch.nn.functional.pad(tensor, pad, "constant", 0)
 
 
 class TextDatasetCSV(data.Dataset):
@@ -313,16 +126,22 @@ class TextDatasetCSV(data.Dataset):
             base_size = base_size * 2
 
         # Load CSV file
-        self.data = pd.read_csv(csv_path)
-        assert 'image_path' in self.data.columns and 'caption' in self.data.columns, \
-            "CSV must have 'image_path' and 'caption' columns."
+        self.data = pd.read_csv(csv_path, sep=',')
+        # assert 'image_path' in self.data.columns and 'caption' in self.data.columns, \
+        #     "CSV must have 'image_path' and 'caption' columns."
 
-        self.image_paths = self.data['image_path'].tolist()
-        self.raw_captions = self.data['caption'].tolist()
+        self.image_paths = self.data['Image_path'].tolist()
+        self.raw_captions = self.data['Caption'].tolist()
+        self.sent_vector_paths = self.data['Sentence_vector_path'].tolist()
+        self.word_vector_paths = self.data['Word_vector_path'].tolist()
+        self.image_vector_paths = self.data['Image_vector_path'].tolist()
+        self.image_region_vector_paths = self.data['Image_region_vector_path'].tolist()
 
         # Process all captions into tokenized word indices
         self.captions, self.ixtoword, self.wordtoix, self.n_words = self.build_dictionary(self.raw_captions)
         self.number_example = len(self.image_paths)
+
+        self.base_dir = r"C:\Users\alexm\Desktop\master\Dizertatie\toy_dataset"
 
     def build_dictionary(self, captions_text):
         word_counts = defaultdict(float)
@@ -374,40 +193,27 @@ class TextDatasetCSV(data.Dataset):
         return x, x_len
 
     def __getitem__(self, index):
-        img_path = self.image_paths[index]
+        img_path = os.path.join(self.base_dir, self.image_paths[index])
+        sent_vector_path = os.path.join(self.base_dir, self.sent_vector_paths[index])
+        word_vector_path = os.path.join(self.base_dir, self.word_vector_paths[index])
+        image_vector_path = os.path.join(self.base_dir, self.image_vector_paths[index])
+        image_region_vector_path = os.path.join(self.base_dir, self.image_region_vector_paths[index])
         cls_id = index  # Dummy class ID
         key = os.path.splitext(os.path.basename(img_path))[0]
 
         imgs = get_imgs(img_path, self.imsize,
                         bbox=None, transform=self.transform, normalize=self.norm)
 
-        caps, cap_len = self.get_caption(index)
+        sent_vector = load_tensor(sent_vector_path)
+        word_vector = load_tensor(word_vector_path)
+        word_vector = pad_tensor_to_dim(word_vector, 2, 12)
+        image_vector = load_tensor(image_vector_path)
+        image_region_vector = load_tensor(image_region_vector_path)
 
-        return imgs, caps, cap_len, cls_id, key
+        caps, cap_len = self.get_caption(index)
+        raw_caption = self.raw_captions[index]  # Add raw caption text
+
+        return imgs, caps, cap_len, cls_id, key, raw_caption, sent_vector, word_vector, image_vector, image_region_vector
 
     def __len__(self):
         return len(self.image_paths)
-
-
-
-class COCODataset(data.Dataset):
-    def __init__(self, csv_file, transform=None):
-        self.data = pd.read_csv(csv_file)
-        self.transform = transform
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        img_path = self.data.iloc[idx, 0]
-        image = Image.open(img_path).convert("RGB")
-        caption = self.data.iloc[idx, 2]
-
-        if self.transform:
-            image = self.transform(image)
-
-        return image, caption
-
-def get_coco_dataloader(csv_file, batch_size=32, transform=None, shuffle=True, num_workers=2):
-    dataset = COCODataset(csv_file, transform=transform)
-    return data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
