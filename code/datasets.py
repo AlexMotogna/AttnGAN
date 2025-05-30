@@ -48,6 +48,10 @@ def prepare_data(data, gpuId):
     if cfg.CUDA:
         captions = Variable(captions).to(gpuId)
         sorted_cap_lens = Variable(sorted_cap_lens).to(gpuId)
+        sent_vector = sent_vector.to(gpuId)
+        word_vector = word_vector.to(gpuId)
+        image_vector = image_vector.to(gpuId)
+        image_region_vector = image_region_vector.to(gpuId)
     else:
         captions = Variable(captions)
         sorted_cap_lens = Variable(sorted_cap_lens)
@@ -99,16 +103,17 @@ def load_tensor(filepath):
 
 def pad_tensor_to_dim(tensor, dim, target_size):
     current_size = tensor.size(dim)
-    if current_size >= target_size:
+
+    if current_size == target_size:
         return tensor
-
-    pad_amount = target_size - current_size
-
-    pad = [0] * (2 * tensor.dim())
-    pad_index = 2 * (tensor.dim() - dim - 1)
-    pad[pad_index] = pad_amount
-
-    return torch.nn.functional.pad(tensor, pad, "constant", 0)
+    elif current_size < target_size:
+        pad_amount = target_size - current_size
+        pad = [0] * (2 * tensor.dim())
+        pad_index = 2 * (tensor.dim() - dim - 1)
+        pad[pad_index] = pad_amount
+        return torch.nn.functional.pad(tensor, pad, "constant", 0)
+    else:
+        return torch.narrow(tensor, dim, 0, target_size)
 
 
 class TextDatasetCSV(data.Dataset):
@@ -126,22 +131,22 @@ class TextDatasetCSV(data.Dataset):
             base_size = base_size * 2
 
         # Load CSV file
-        self.data = pd.read_csv(csv_path, sep=',')
+        self.data = pd.read_csv(csv_path, sep=';')
         # assert 'image_path' in self.data.columns and 'caption' in self.data.columns, \
         #     "CSV must have 'image_path' and 'caption' columns."
 
-        self.image_paths = self.data['Image_path'].tolist()
-        self.raw_captions = self.data['Caption'].tolist()
-        self.sent_vector_paths = self.data['Sentence_vector_path'].tolist()
-        self.word_vector_paths = self.data['Word_vector_path'].tolist()
-        self.image_vector_paths = self.data['Image_vector_path'].tolist()
-        self.image_region_vector_paths = self.data['Image_region_vector_path'].tolist()
+        self.image_paths = self.data['image_path'].tolist()
+        self.raw_captions = self.data['caption'].tolist()
+        self.sent_vector_paths = self.data['sentence_vector_path'].tolist()
+        self.word_vector_paths = self.data['word_vector_path'].tolist()
+        self.image_vector_paths = self.data['image_vector_path'].tolist()
+        self.image_region_vector_paths = self.data['image_region_vector_path'].tolist()
 
         # Process all captions into tokenized word indices
         self.captions, self.ixtoword, self.wordtoix, self.n_words = self.build_dictionary(self.raw_captions)
         self.number_example = len(self.image_paths)
 
-        self.base_dir = r"C:\Users\alexm\Desktop\master\Dizertatie\toy_dataset"
+        self.base_dir = ""
 
     def build_dictionary(self, captions_text):
         word_counts = defaultdict(float)
@@ -206,7 +211,7 @@ class TextDatasetCSV(data.Dataset):
 
         sent_vector = load_tensor(sent_vector_path)
         word_vector = load_tensor(word_vector_path)
-        word_vector = pad_tensor_to_dim(word_vector, 2, 12)
+        word_vector = pad_tensor_to_dim(word_vector, 2, 18)
         image_vector = load_tensor(image_vector_path)
         image_region_vector = load_tensor(image_region_vector_path)
 

@@ -27,6 +27,15 @@ COLOR_DIC = {0:[128,64,128],  1:[244, 35,232],
 FONT_MAX = 50
 
 
+def resize_tensor_image(tensor_img, new_size):
+    if tensor_img.dim() != 3:
+        raise ValueError("Input tensor must be 3D (C, H, W)")
+    
+    tensor_img = tensor_img.unsqueeze(0)  # Add batch dimension
+    resized = nn.functional.interpolate(tensor_img, size=new_size, mode='bilinear', align_corners=False)
+    return resized.squeeze(0)  # Remove batch dimension
+
+
 def drawCaption(convas, captions, ixtoword, vis_size, off1=2, off2=2):
     num = captions.size(0)
     img_txt = Image.fromarray(convas)
@@ -132,7 +141,7 @@ def build_super_images(real_imgs, captions, ixtoword,
                 one_map = \
                     skimage.transform.pyramid_expand(one_map, sigma=20,
                                                      upscale=vis_size // att_sze,
-                                                     multichannel=True)
+                                                     channel_axis=2)
             row_beforeNorm.append(one_map)
             minV = one_map.min()
             maxV = one_map.max()
@@ -145,6 +154,9 @@ def build_super_images(real_imgs, captions, ixtoword,
                 one_map = row_beforeNorm[j]
                 one_map = (one_map - minVglobal) / (maxVglobal - minVglobal)
                 one_map *= 255
+
+                if one_map.shape[0] == 252:
+                    one_map = resize_tensor_image(one_map, (256, 256))
                 #
                 PIL_im = Image.fromarray(np.uint8(img))
                 PIL_att = Image.fromarray(np.uint8(one_map))
@@ -233,7 +245,7 @@ def build_super_images2(real_imgs, captions, cap_lens, ixtoword,
                 one_map = \
                     skimage.transform.pyramid_expand(one_map, sigma=20,
                                                      upscale=vis_size // att_sze,
-                                                     multichannel=True)
+                                                     channel_axis=2)
             minV = one_map.min()
             maxV = one_map.max()
             one_map = (one_map - minV) / (maxV - minV)

@@ -10,10 +10,10 @@ __C = edict()
 cfg = __C
 
 # Dataset name: flowers, birds
-__C.DATASET_NAME = 'covers'
+__C.DATASET_NAME = 'COCO'
 __C.CONFIG_NAME = ''
-__C.DATA_DIR = '../../../dataset/BOOK_DB'
-__C.OUTPUT_DIR = '../../../output'
+__C.DATA_DIR = '/raid/bigdata/userhome/alexandru.motogna/dataset/toy_dataset.csv'
+__C.OUTPUT_DIR = '/raid/bigdata/userhome/alexandru.motogna/outputs/run1_vectors'
 __C.GPU_ID = 0
 __C.CUDA = True
 __C.WORKERS = 6
@@ -30,7 +30,7 @@ __C.TREE.BASE_SIZE = 64
 __C.TRAIN = edict()
 __C.TRAIN.BATCH_SIZE = 16
 __C.TRAIN.MAX_EPOCH = 600
-__C.TRAIN.SNAPSHOT_INTERVAL = 25
+__C.TRAIN.SNAPSHOT_INTERVAL = 1
 __C.TRAIN.DISCRIMINATOR_LR = 2e-4
 __C.TRAIN.GENERATOR_LR = 2e-4
 __C.TRAIN.ENCODER_LR = 2e-4

@@ -164,11 +164,13 @@ class condGANTrainer(object):
                     netsD[i].load_state_dict(state_dict)
         # ########################################################### #
         if cfg.CUDA:
-            text_encoder = text_encoder.to(self.rank)
-            image_encoder = image_encoder.to(self.rank)
-            netG = DistributedDataParallel(netG.to(self.rank), device_ids=[self.rank], output_device=self.rank, find_unused_parameters=True).module
+            # text_encoder = text_encoder.to(self.rank)
+            # image_encoder = image_encoder.to(self.rank)
+            # netG = DistributedDataParallel(netG.to(self.rank), device_ids=[self.rank], output_device=self.rank, find_unused_parameters=True).module
+            netG = netG.to(self.rank)
             for i in range(len(netsD)):
-                netsD[i] = DistributedDataParallel(netsD[i].to(self.rank), device_ids=[self.rank], output_device=self.rank, find_unused_parameters=True).module
+                # netsD[i] = DistributedDataParallel(netsD[i].to(self.rank), device_ids=[self.rank], output_device=self.rank, find_unused_parameters=True).module
+                netsD[i] = netsD[i].to(self.rank)
         return [text_encoder, image_encoder, netG, netsD, epoch]
 
     def define_optimizers(self, netG, netsD):
@@ -276,7 +278,6 @@ class condGANTrainer(object):
             start_t = time.time()
             # self.data_loader.sampler.set_epoch(epoch)
             for step, data in enumerate(self.data_loader, 0):
-                print(step)
                 # reset requires_grad to be trainable for all Ds
                 # self.set_requires_grad_value(netsD, True)
 
@@ -285,7 +286,6 @@ class condGANTrainer(object):
                 ######################################################
                 # data = data_iter.next()
                 imgs, captions, cap_lens, class_ids, keys, raw_captions, sent_vector, word_vector, image_vector, image_region_vector = prepare_data(data, self.rank)
-                print("cap_len", cap_lens)
 
                 # hidden = text_encoder.init_hidden(batch_size)
                 # words_embs: batch_size x nef x seq_len
@@ -293,8 +293,6 @@ class condGANTrainer(object):
                 # words_embs, sent_emb = text_encoder(captions, cap_lens, hidden)
                 words_embs = word_vector
                 sent_emb = sent_vector
-
-                print(words_embs.shape, sent_emb.shape)
 
                 # print('word', words_embs.shape)  #word torch.Size([16, 768, 12])
                 # print('sent', sent_emb.shape) #sent torch.Size([16, 768])
@@ -357,13 +355,13 @@ class condGANTrainer(object):
                 if gen_iterations % 10000 == 0:
                     print(D_logs + '\n' + G_logs)
                 # save images
-                if gen_iterations % 20000 == 0:
-                    backup_para = copy_G_params(netG)
-                    load_params(netG, avg_param_G)
-                    self.save_img_results(netG, fixed_noise, sent_emb,
-                                          words_embs, mask, image_region_vector,
-                                          captions, cap_lens, epoch, name='average')
-                    load_params(netG, backup_para)
+                # if gen_iterations % 20000 == 0:
+                #     backup_para = copy_G_params(netG)
+                #     load_params(netG, avg_param_G)
+                #     self.save_img_results(netG, fixed_noise, sent_emb,
+                #                           words_embs, mask, image_region_vector,
+                #                           captions, cap_lens, epoch, name='average')
+                #     load_params(netG, backup_para)
 
             end_t = time.time()
 
@@ -404,11 +402,11 @@ class condGANTrainer(object):
                     self.g_lr = cfg.TRAIN.G_LR_DECAY_LOWER_BOUND
                 optimizerG, optimizersD = self.define_optimizers(netG, netsD)
 
-            if epoch % cfg.TRAIN.SNAPSHOT_INTERVAL == 0 and self.rank == 0:  # and epoch != 0:
+            if epoch % cfg.TRAIN.SNAPSHOT_INTERVAL == 0:  # and epoch != 0:
+                print("saved model")
                 self.save_model(netG, avg_param_G, netsD, epoch)
 
-        if self.rank == 0:
-            self.save_model(netG, avg_param_G, netsD, self.max_epoch)
+        self.save_model(netG, avg_param_G, netsD, self.max_epoch)
 
     def save_singleimages(self, images, filenames, save_dir,
                           split_dir, sentenceID=0):

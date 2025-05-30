@@ -33,7 +33,7 @@ def parse_args():
     parser.add_argument('--cfg', dest='cfg_file',
                         help='optional config file',
                         default='cfg/bird_attn2.yml', type=str)
-    parser.add_argument('--gpu', dest='gpu_id', type=int, default=-1)
+    parser.add_argument('--gpu', dest='gpu_id', type=int, default=0)
     parser.add_argument('--data_dir', dest='data_dir', type=str, default='')
     parser.add_argument('--manualSeed', type=int, help='manual seed')
     args = parser.parse_args()
@@ -111,7 +111,7 @@ def run(cfg, output_dir):
         drop_last=True, num_workers=1)
     
     # Define models and go to train/evaluate
-    algo = trainer(output_dir, dataloader, dataset.n_words, dataset.ixtoword, 'cpu')
+    algo = trainer(output_dir, dataloader, dataset.n_words, dataset.ixtoword, 'cuda:0')
 
     start_t = time.time()
     if cfg.TRAIN.FLAG:

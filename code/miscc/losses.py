@@ -189,7 +189,6 @@ def generator_loss(netsD, image_vector, image_region_vector, fake_imgs, real_lab
             # sent_code: batch_size x nef
             region_features = image_region_vector
             cnn_code = image_vector
-            print("Image", region_features.shape, cnn_code.shape)
             w_loss0, w_loss1, _ = words_loss(region_features, words_embs,
                                              match_labels, cap_lens,
                                              class_ids, batch_size, rank)
