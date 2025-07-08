@@ -98,7 +98,7 @@ def get_imgs(img_path, imsize, bbox=None,
 
 
 def load_tensor(filepath):
-    return torch.load(filepath)
+    return torch.load(filepath, map_location=torch.device('cpu'))
 
 
 def pad_tensor_to_dim(tensor, dim, target_size):

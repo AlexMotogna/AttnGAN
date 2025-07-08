@@ -108,7 +108,7 @@ def run(cfg, output_dir):
 
     dataloader = torch.utils.data.DataLoader(
         dataset, batch_size=cfg.TRAIN.BATCH_SIZE,
-        drop_last=True, num_workers=1)
+        drop_last=True, num_workers=cfg.WORKERS)
     
     # Define models and go to train/evaluate
     algo = trainer(output_dir, dataloader, dataset.n_words, dataset.ixtoword, 'cuda:0')

@@ -1,9 +1,9 @@
 CONFIG_NAME: 'GAN_Local'
 
 DATASET_NAME: 'COCO'
-# DATA_DIR: '/raid/bigdata/userhome/alexandru.motogna/dataset/train_coco_vectors.csv'
-DATA_DIR: '/raid/bigdata/userhome/alexandru.motogna/dataset/toy_dataset.csv'
-OUTPUT_DIR: '/raid/bigdata/userhome/alexandru.motogna/outputs/run1_vectors'
+# DATA_DIR: /raid/bigdata/userhome/alexandru.motogna/cub_dataset/toy_cub.csv
+DATA_DIR: '/raid/bigdata/userhome/alexandru.motogna/cub_dataset/cub_train_vectors.csv'
+OUTPUT_DIR: '/raid/bigdata/userhome/alexandru.motogna/outputs/run5_cub'
 GPU_ID: 0
 WORKERS: 10
 CUDA: True
@@ -17,7 +17,7 @@ TRAIN:
     FLAG: True
     NET_G: ''  # Preload model
     B_NET_D: True
-    BATCH_SIZE: 32  # 22, 16
+    BATCH_SIZE: 8  # 22, 16
     MAX_EPOCH: 600
     SNAPSHOT_INTERVAL: 1
     DISCRIMINATOR_LR: 0.002
