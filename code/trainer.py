@@ -19,7 +19,7 @@ from model import G_DCGAN, G_NET
 from datasets import prepare_data
 from model import RNN_ENCODER, CNN_ENCODER
 from model import D_NET64, D_NET128, D_NET256
-from embedding_generator import EmbeddingGenerator
+from clip_model import CLIPEmbeddingCalculator
 
 from miscc.losses import words_loss
 from miscc.losses import discriminator_loss, generator_loss, KL_loss
@@ -69,7 +69,7 @@ class condGANTrainer(object):
         self.data_loader = data_loader
         self.num_batches = len(self.data_loader)
 
-        self.embedding_generator = EmbeddingGenerator()
+        self.embedding_generator = CLIPEmbeddingCalculator(self.rank)
 
         self.g_lr = cfg.TRAIN.GENERATOR_LR
 
@@ -218,46 +218,20 @@ class condGANTrainer(object):
             for p in models_list[i].parameters():
                 p.requires_grad = brequires
 
-    def save_img_results(self, netG, noise, sent_emb, words_embs, mask,
-                         image_region_vector, captions, cap_lens,
-                         gen_iterations, name='current'):
+    def save_img_results(self, fake_imgs, gen_iterations, d_count):
         # Save images
-        fake_imgs, attention_maps, _, _ = netG(noise, sent_emb, words_embs, mask)
-        for i in range(len(attention_maps)):
-            if len(fake_imgs) > 1:
-                img = fake_imgs[i + 1].detach().cpu()
-                lr_img = fake_imgs[i].detach().cpu()
-            else:
-                img = fake_imgs[0].detach().cpu()
-                lr_img = None
-            attn_maps = attention_maps[i]
-            att_sze = attn_maps.size(2)
-            img_set, _ = \
-                build_super_images(img, captions, self.ixtoword,
-                                   attn_maps, att_sze, lr_imgs=lr_img)
-            if img_set is not None:
-                im = Image.fromarray(img_set)
-                fullpath = '%s/G_%s_%d_%d.png'\
-                    % (self.image_dir, name, gen_iterations, i)
-                im.save(fullpath)
+        for d in range(d_count):
+            imgs = fake_imgs[d]
+            for i in range(imgs.size(0)):
+                im = imgs[i].data.cpu().numpy()
+                im = (im + 1.0) * 127.5
+                im = im.astype(np.uint8)
+                im = np.transpose(im, (1, 2, 0))
+                im = Image.fromarray(im)
 
-        # for i in range(len(netsD)):
-        i = -1
-        img = fake_imgs[i].detach()
-        region_features = image_region_vector
-        att_sze = region_features.size(2)
-        _, _, att_maps = words_loss(region_features.detach(),
-                                    words_embs.detach(),
-                                    None, cap_lens,
-                                    None, self.batch_size, self.rank)
-        img_set, _ = \
-            build_super_images(fake_imgs[i].detach().cpu(),
-                               captions, self.ixtoword, att_maps, att_sze)
-        if img_set is not None:
-            im = Image.fromarray(img_set)
-            fullpath = '%s/D_%s_%d.png'\
-                % (self.image_dir, name, gen_iterations)
-            im.save(fullpath)
+                fullpath = '%s/D_%d_%d_%d.png'\
+                    % (self.image_dir, d, i, gen_iterations)
+                im.save(fullpath)
 
     def train(self):
         _, _, netG, netsD, start_epoch = self.build_models()
@@ -285,7 +259,7 @@ class condGANTrainer(object):
                 # (1) Prepare training data and Compute text embeddings
                 ######################################################
                 # data = data_iter.next()
-                imgs, captions, cap_lens, class_ids, keys, raw_captions, sent_vector, word_vector, image_vector, image_region_vector = prepare_data(data, self.rank)
+                imgs, captions, cap_lens, class_ids, keys, raw_captions, sent_vector, word_vector, _, _ = prepare_data(data, self.rank)
 
                 # hidden = text_encoder.init_hidden(batch_size)
                 # words_embs: batch_size x nef x seq_len
@@ -340,7 +314,7 @@ class condGANTrainer(object):
                 # self.set_requires_grad_value(netsD, False)
                 netG.zero_grad()
                 errG_total, G_logs = \
-                    generator_loss(netsD, image_vector, image_region_vector, fake_imgs, real_labels,
+                    generator_loss(netsD, self.embedding_generator, fake_imgs, real_labels,
                                    words_embs, sent_emb, match_labels, cap_lens, class_ids, self.rank)
                 # Image torch.Size([16, 768, 17, 17]) torch.Size([16, 768])
                 kl_loss = KL_loss(mu, logvar)
@@ -355,13 +329,8 @@ class condGANTrainer(object):
                 if gen_iterations % 10000 == 0:
                     print(D_logs + '\n' + G_logs)
                 # save images
-                # if gen_iterations % 20000 == 0:
-                #     backup_para = copy_G_params(netG)
-                #     load_params(netG, avg_param_G)
-                #     self.save_img_results(netG, fixed_noise, sent_emb,
-                #                           words_embs, mask, image_region_vector,
-                #                           captions, cap_lens, epoch, name='average')
-                #     load_params(netG, backup_para)
+                if gen_iterations % 1 == 0:
+                    self.save_img_results(fake_imgs, gen_iterations, len(netsD))
 
             end_t = time.time()
 

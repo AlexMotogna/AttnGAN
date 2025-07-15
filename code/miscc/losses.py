@@ -161,7 +161,7 @@ def discriminator_loss(netD, real_imgs, fake_imgs, conditions,
     return errD
 
 
-def generator_loss(netsD, image_vector, image_region_vector, fake_imgs, real_labels,
+def generator_loss(netsD, embedding_generator, fake_imgs, real_labels,
                    words_embs, sent_emb, match_labels,
                    cap_lens, class_ids, rank):
     numDs = len(netsD)
@@ -187,8 +187,9 @@ def generator_loss(netsD, image_vector, image_region_vector, fake_imgs, real_lab
         if i == (numDs - 1):
             # words_features: batch_size x nef x 17 x 17
             # sent_code: batch_size x nef
-            region_features = image_region_vector
-            cnn_code = image_vector
+
+            cnn_code, region_features = embedding_generator.image_encoders(fake_imgs[i])
+
             w_loss0, w_loss1, _ = words_loss(region_features, words_embs,
                                              match_labels, cap_lens,
                                              class_ids, batch_size, rank)

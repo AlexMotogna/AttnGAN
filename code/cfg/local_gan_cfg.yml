@@ -16,7 +16,7 @@ TRAIN:
     FLAG: True
     NET_G: ''  # Preload model
     B_NET_D: True
-    BATCH_SIZE: 16  # 22
+    BATCH_SIZE: 3  # 22
     MAX_EPOCH: 600
     SNAPSHOT_INTERVAL: 5
     DISCRIMINATOR_LR: 0.002
@@ -31,9 +31,9 @@ TRAIN:
 
 
 GAN:
-    DF_DIM: 32  # medium model
-    GF_DIM: 32  # medium model
-    Z_DIM: 100  # scale with GF_DIM & DF_DIM
+    DF_DIM: 64  # medium model
+    GF_DIM: 128  # medium model
+    Z_DIM: 256  # scale with GF_DIM & DF_DIM
     R_NUM: 2
 
 TEXT:
